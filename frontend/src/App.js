@@ -768,7 +768,7 @@ function App() {
             {/* RIGHT */}
              <div className="hidden lg:block h-full min-h-0 overflow-hidden">
               <div className="h-full min-h-0 flex flex-col overflow-hidden">
-                <div className="space-y-4">
+                <div className="shrink-0">
                   {/* SUGGESTIONS */}
                   <div className="bg-white rounded-xl p-5 shadow-sm border border-purple-100">
                     <h3
@@ -819,7 +819,7 @@ function App() {
                     <img
                       src={robot}
                       alt="AI Assistant"
-                      className="w-full max-w-[285px] xl:max-w-[310px] h-auto object-contain"
+                      className="w-full h-full max-w-[285px] xl:max-w-[310px] object-contain"
                       style={{
                         filter:
                           'drop-shadow(0 16px 30px rgba(124, 43, 209, 0.08))',

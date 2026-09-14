@@ -1269,62 +1269,55 @@ class TaskParser:
 
         cleaned = text.strip()
 
+        if not cleaned:
+            return ""
+
         instruction_patterns = [
-            r"\bremind me to\b",
-            r"\bremember to\b",
-            r"\bdon't forget to\b",
-            r"\bi need to\b",
-            r"\bneed to\b",
-            r"\bi have to\b",
-            r"\bhave to\b",
-            r"\bi should\b",
-            r"\bshould\b",
+            r"^\s*please\s+",
+            r"^\s*can you\s+",
+            r"^\s*could you\s+",
+            r"^\s*would you\s+",
+            r"^\s*i want you to\s+",
+            r"^\s*i would like you to\s+",
+            r"^\s*i'd like you to\s+",
+            r"^\s*remind me to\s+",
+            r"^\s*remember to\s+",
+            r"^\s*don't forget to\s+",
+            r"^\s*i need to\s+",
+            r"^\s*need to\s+",
+            r"^\s*i have to\s+",
+            r"^\s*have to\s+",
+            r"^\s*i should\s+",
+            r"^\s*should\s+",
+            r"^\s*add a task to\s+",
+            r"^\s*add task to\s+",
+            r"^\s*create a task to\s+",
+            r"^\s*create task to\s+",
+            r"^\s*add\s+",
+            r"^\s*create\s+",
+            r"^\s*plan to\s+",
         ]
 
         for pattern in instruction_patterns:
             cleaned = re.sub(
-                pattern,
-                " ",
-                cleaned,
-                flags=re.IGNORECASE,
-            )
-
-        # -----------------------------------------------------
-        # PRIORITY PHRASES
-        # -----------------------------------------------------
+                pattern, "", cleaned, flags=re.IGNORECASE
+            ).strip()
 
         priority_phrase_patterns = [
             (
-                r",?\s*it\s+is\s+"
+                r",?\s*(?:it\s+is|it's|this\s+is)\s+"
                 r"(?:very\s+|extremely\s+)?"
-                r"(?:urgent|important|critical|"
-                r"high priority|low priority)\b"
+                r"(?:urgent|important|critical|high\s+priority|low\s+priority)\b"
             ),
             (
-                r",?\s*it's\s+"
-                r"(?:very\s+|extremely\s+)?"
-                r"(?:urgent|important|critical|"
-                r"high priority|low priority)\b"
-            ),
-            (
-                r",?\s*this\s+is\s+"
-                r"(?:very\s+|extremely\s+)?"
-                r"(?:urgent|important|critical|"
-                r"high priority|low priority)\b"
+                r",?\s*(?:and\s+)?(?:make|mark|set)\s+(?:it\s+)?"
+                r"(?:as\s+)?(?:urgent|important|critical|"
+                r"high\s+priority|low\s+priority)\b"
             ),
         ]
 
         for pattern in priority_phrase_patterns:
-            cleaned = re.sub(
-                pattern,
-                " ",
-                cleaned,
-                flags=re.IGNORECASE,
-            )
-
-        # -----------------------------------------------------
-        # RECURRENCE
-        # -----------------------------------------------------
+            cleaned = re.sub(pattern, " ", cleaned, flags=re.IGNORECASE)
 
         recurring_cleanup_patterns = [
             r"\bevery\s+day\s+this\s+week\b",
@@ -1341,7 +1334,6 @@ class TaskParser:
             r"\bevery\s+month\b",
             r"\beach\s+month\b",
             r"\bmonthly\b",
-            r"\bthis\s+week\b",
             r"\b\d+\s+times?\s+per\s+day\b",
             r"\b\d+\s+times?\s+a\s+day\b",
             r"\b\d+\s+times?\s+each\s+day\b",
@@ -1349,75 +1341,80 @@ class TaskParser:
         ]
 
         for pattern in recurring_cleanup_patterns:
-            cleaned = re.sub(
-                pattern,
-                " ",
-                cleaned,
-                flags=re.IGNORECASE,
-            )
-
-        # -----------------------------------------------------
-        # REMINDER WORDING
-        # -----------------------------------------------------
+            cleaned = re.sub(pattern, " ", cleaned, flags=re.IGNORECASE)
 
         reminder_patterns = [
-            r",?\s*remind me in \d+\s*minutes?",
-            r",?\s*remind me before \d{1,2}:\d{2}\s*o'?clock?",
-            r",?\s*remind me before \d{1,2}:\d{2}",
-            r",?\s*remind me at \d{1,2}(?::\d{2})?\s*(?:am|pm)?",
-            r",?\s*email me\b.*$",
-            r",?\s*send me an email\b.*$",
-            r",?\s*send (?:me )?(?:a )?reminder\b.*$",
-            r",?\s*send (?:a )?reminder\b.*$",
-            r",?\s*remind me\b.*$",
+            r",?\s*(?:and\s+)?remind me\s+\d+\s*minutes?\s+before.*$",
+            r",?\s*(?:and\s+)?remind me\s+\d+\s*hours?\s+before.*$",
+            r",?\s*(?:and\s+)?remind me\s+before\s+"
+            r"\d{1,2}(?::\d{2})?\s*(?:am|pm)?.*$",
+            r",?\s*(?:and\s+)?remind me\s+at\s+"
+            r"\d{1,2}(?::\d{2})?\s*(?:am|pm)?.*$",
+            r",?\s*(?:and\s+)?send me an email\b.*$",
+            r",?\s*(?:and\s+)?email me\b.*$",
+            r",?\s*(?:and\s+)?send\s+(?:me\s+)?(?:a\s+)?reminder\b.*$",
+            r",?\s*(?:and\s+)?send\s+(?:me\s+)?(?:a\s+)?notification\b.*$",
+            r",?\s*(?:and\s+)?notify me\b.*$",
         ]
 
         for pattern in reminder_patterns:
-            cleaned = re.sub(
-                pattern,
-                " ",
-                cleaned,
-                flags=re.IGNORECASE,
-            )
+            cleaned = re.sub(pattern, " ", cleaned, flags=re.IGNORECASE)
 
-        # -----------------------------------------------------
-        # TIMES AND DATES
-        # -----------------------------------------------------
+        date_patterns = [
+            r"\bthis\s+morning\b",
+            r"\bthis\s+afternoon\b",
+            r"\bthis\s+evening\b",
+            r"\btomorrow\s+morning\b",
+            r"\btomorrow\s+afternoon\b",
+            r"\btomorrow\s+evening\b",
+            r"\btoday\b",
+            r"\btomorrow\b",
+            r"\btonight\b",
+            r"\bnext\s+week\b",
+            r"\bnext\s+month\b",
+            r"\bnext\s+(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b",
+            r"\bthis\s+(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b",
+            r"\bon\s+(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b",
+            r"\bin\s+\d+\s*(?:days?|hours?|minutes?)\b",
+        ]
+
+        for pattern in date_patterns:
+            cleaned = re.sub(pattern, " ", cleaned, flags=re.IGNORECASE)
+
+        explicit_date_patterns = [
+            r"\bon\s+\w+\s+\d{1,2}(?:st|nd|rd|th)?\b",
+            r"\b\w+\s+\d{1,2}(?:st|nd|rd|th)?\b",
+            r"\bon\s+\d{1,2}/\d{1,2}/\d{2,4}\b",
+            r"\b\d{1,2}/\d{1,2}/\d{2,4}\b",
+            r"\bon\s+\d{1,2}-\d{1,2}-\d{2,4}\b",
+            r"\b\d{1,2}-\d{1,2}-\d{2,4}\b",
+        ]
+
+        for pattern in explicit_date_patterns:
+            cleaned = re.sub(pattern, " ", cleaned, flags=re.IGNORECASE)
 
         time_patterns = [
-            r"\b(tomorrow|today|next week|next month)\b",
-            r"\bin \d+\s*(?:days?|hours?|minutes?)\b",
             (
-                r"\b(?:at|by|before)\s+"
-                r"(?:1[0-2]|0?[1-9])"
-                r"(?::[0-5]\d)?"
-                r"\s*(?:am|pm)\b"
+                r"\b(?:at|by|before|around)\s+"
+                r"(?:1[0-2]|0?[1-9])(?::[0-5]\d)?\s*(?:am|pm)\b"
             ),
-            (
-                r"\b(?:1[0-2]|0?[1-9])"
-                r"(?::[0-5]\d)?"
-                r"\s*(?:am|pm)\b"
-            ),
-            r"\bon \w+ \d+\b",
-            r"\bon \d+/\d+/\d+\b",
-            r"\b\d+/\d+/\d+\b",
-            r"\b\d+ hours?\b",
-            r"\b\d+ hrs?\b",
-            r"\b\d+ minutes?\b",
-            r"\b\d+ mins?\b",
+            r"\b(?:1[0-2]|0?[1-9])(?::[0-5]\d)?\s*(?:am|pm)\b",
+            r"\bat\s+\d{1,2}:\d{2}\b",
+            r"\bby\s+\d{1,2}:\d{2}\b",
         ]
 
         for pattern in time_patterns:
-            cleaned = re.sub(
-                pattern,
-                " ",
-                cleaned,
-                flags=re.IGNORECASE,
-            )
+            cleaned = re.sub(pattern, " ", cleaned, flags=re.IGNORECASE)
 
-        # -----------------------------------------------------
-        # PRIORITY KEYWORDS
-        # -----------------------------------------------------
+        duration_patterns = [
+            r"\bfor\s+\d+(?:\.\d+)?\s*hours?\b",
+            r"\bfor\s+\d+(?:\.\d+)?\s*hrs?\b",
+            r"\bfor\s+\d+\s*minutes?\b",
+            r"\bfor\s+\d+\s*mins?\b",
+        ]
+
+        for pattern in duration_patterns:
+            cleaned = re.sub(pattern, " ", cleaned, flags=re.IGNORECASE)
 
         for word in sorted(
             self.priority_keywords.keys(),
@@ -1431,54 +1428,58 @@ class TaskParser:
                 flags=re.IGNORECASE,
             )
 
-        # -----------------------------------------------------
-        # FILLER WORDS
-        # -----------------------------------------------------
-
         cleaned = re.sub(
-            r"^\s*i\s+",
-            " ",
+            r"^\s*(?:to)\s+",
+            "",
             cleaned,
             flags=re.IGNORECASE,
         )
 
         cleaned = re.sub(
-            r"^\s*to\s+",
-            " ",
+            r"\s+(?:at|by|on|before)\s*$",
+            "",
             cleaned,
             flags=re.IGNORECASE,
         )
 
-        cleaned = re.sub(
-            r"\b(a|an|the)\b",
-            " ",
+        cleaned = re.sub(r"\s+", " ", cleaned)
+        cleaned = re.sub(r"\s+([,.!?;:])", r"\1", cleaned)
+        cleaned = re.sub(r"([,.!?;:]){2,}", r"\1", cleaned)
+        cleaned = cleaned.strip(" ,.-?!:;")
+
+        # Natural title normalization.
+        meeting_match = re.fullmatch(
+            r"(?:schedule|arrange|set\s+up|plan)\s+"
+            r"(?:a\s+|an\s+|the\s+)?"
+            r"(?:meeting|call)\s+with\s+"
+            r"(?:the\s+)?(.+)",
             cleaned,
             flags=re.IGNORECASE,
         )
 
-        cleaned = re.sub(
-            r"\s+",
-            " ",
-            cleaned,
-        )
+        if meeting_match:
+            participant = meeting_match.group(1).strip()
 
-        # Fix whitespace before punctuation.
-        cleaned = re.sub(
-            r"\s+([,.!?;:])",
-            r"\1",
-            cleaned,
-        )
+            if participant.lower() == "team":
+                cleaned = "Team meeting"
+            else:
+                cleaned = f"Meeting with {participant}"
+        else:
+            appointment_match = re.fullmatch(
+                r"(?:schedule|arrange|set\s+up|book)\s+"
+                r"(?:a\s+|an\s+|the\s+)?"
+                r"(.+?\s+appointment)",
+                cleaned,
+                flags=re.IGNORECASE,
+            )
 
-        # Remove trailing punctuation, including ?
-        cleaned = cleaned.strip(
-            " ,.-?!:;"
-        )
+            if appointment_match:
+                cleaned = appointment_match.group(1).strip()
+
+        cleaned = re.sub(r"\s+", " ", cleaned).strip(" ,.-?!:;")
 
         if cleaned:
-            cleaned = (
-                cleaned[0].upper()
-                + cleaned[1:]
-            )
+            cleaned = cleaned[0].upper() + cleaned[1:]
 
         return cleaned
 

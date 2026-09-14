@@ -2,6 +2,9 @@ import React, { useState } from 'react';
 import { Mail, ArrowRight } from 'lucide-react';
 import LoginRobot from './assets/LoginRobot.png';
 
+const API_URL =
+  process.env.REACT_APP_API_URL || 'http://localhost:8001';
+
 const Login = ({ onLogin }) => {
   const [email, setEmail] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -15,8 +18,9 @@ const Login = ({ onLogin }) => {
 
     try {
       console.log('Attempting login with email:', email);
+      console.log('Using API URL:', API_URL);
 
-      const response = await fetch('http://localhost:8001/login', {
+      const response = await fetch(`${API_URL}/login`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

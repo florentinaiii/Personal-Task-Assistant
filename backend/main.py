@@ -1,3 +1,4 @@
+import re
 from datetime import datetime
 from typing import List, Optional
 from contextlib import asynccontextmanager
@@ -18,6 +19,7 @@ from models import (
     UserResponse,
     MeetingRequest,
 )
+
 from db import get_db, create_tables, SessionLocal
 from parser import TaskParser
 from planner import TaskPlanner
@@ -25,6 +27,7 @@ from calendar_integration import GoogleCalendarIntegration
 from notifications import notification_manager, websocket_endpoint
 from recurring_tasks import recurring_task_manager
 from meeting_scheduler import meeting_scheduler
+
 
 task_parser = TaskParser()
 task_planner = TaskPlanner()
@@ -35,23 +38,35 @@ calendar_integration = GoogleCalendarIntegration()
 async def lifespan(app: FastAPI):
     # Startup
     create_tables()
-    await notification_manager.start_background_tasks(lambda: SessionLocal())
-    # Process recurring tasks on startup
+
+    await notification_manager.start_background_tasks(
+        lambda: SessionLocal()
+    )
+
+    await recurring_task_manager.start_background_tasks(
+        lambda: SessionLocal()
+    )
+
+    # Process recurring tasks once on startup
     db = SessionLocal()
+
     try:
         recurring_task_manager.process_recurring_tasks(db)
     finally:
         db.close()
-    yield
-    # Shutdown
-    pass
 
+    yield
+
+    # Shutdown
+    notification_manager.stop()
+    recurring_task_manager.stop()
 
 app = FastAPI(
     title="Personal Task Management Assistant",
     version="1.0.0",
-    lifespan=lifespan
+    lifespan=lifespan,
 )
+
 
 app.add_middleware(
     CORSMiddleware,
@@ -62,47 +77,102 @@ app.add_middleware(
 )
 
 
-@app.post("/login", response_model=UserResponse)
-async def login(user_request: UserLoginRequest, db: Session = Depends(get_db)):
-    user = db.query(User).filter(User.email == user_request.email).first()
+# ============================================================
+# LOGIN
+# ============================================================
+
+@app.post(
+    "/login",
+    response_model=UserResponse,
+)
+async def login(
+    user_request: UserLoginRequest,
+    db: Session = Depends(get_db),
+):
+    user = (
+        db.query(User)
+        .filter(User.email == user_request.email)
+        .first()
+    )
 
     if user:
         return user
 
-    new_user = User(email=user_request.email)
+    new_user = User(
+        email=user_request.email
+    )
+
     db.add(new_user)
     db.commit()
     db.refresh(new_user)
+
     return new_user
 
 
-def get_or_create_user(db: Session, email: str) -> User:
-    user = db.query(User).filter(User.email == email).first()
+def get_or_create_user(
+    db: Session,
+    email: str,
+) -> User:
+    user = (
+        db.query(User)
+        .filter(User.email == email)
+        .first()
+    )
+
     if not user:
-        user = User(email=email)
+        user = User(
+            email=email
+        )
+
         db.add(user)
         db.commit()
         db.refresh(user)
+
     return user
 
 
-def get_user_or_404(db: Session, email: str) -> User:
-    user = db.query(User).filter(User.email == email).first()
+def get_user_or_404(
+    db: Session,
+    email: str,
+) -> User:
+    user = (
+        db.query(User)
+        .filter(User.email == email)
+        .first()
+    )
+
     if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+        raise HTTPException(
+            status_code=404,
+            detail="User not found",
+        )
+
     return user
 
 
-@app.post("/tasks", response_model=TaskResponse)
+# ============================================================
+# TASKS
+# ============================================================
+
+@app.post(
+    "/tasks",
+    response_model=TaskResponse,
+)
 async def create_task(
     task: TaskCreate,
     user_email: Optional[str] = None,
     db: Session = Depends(get_db),
 ):
     if not user_email:
-        raise HTTPException(status_code=400, detail="user_email is required")
+        raise HTTPException(
+            status_code=400,
+            detail="user_email is required",
+        )
 
-    user = get_or_create_user(db, user_email)
+    user = get_or_create_user(
+        db,
+        user_email,
+    )
 
     db_task = Task(
         title=task.title,
@@ -124,73 +194,174 @@ async def create_task(
     db.commit()
     db.refresh(db_task)
 
-    await notification_manager.send_task_notification(db_task, "created")
+    await notification_manager.send_task_notification(
+        db_task,
+        "created",
+    )
+
     return db_task
 
 
-@app.get("/tasks", response_model=List[TaskResponse])
+@app.get(
+    "/tasks",
+    response_model=List[TaskResponse],
+)
 async def get_tasks(
     user_email: Optional[str] = None,
     db: Session = Depends(get_db),
 ):
     if user_email:
-        user = db.query(User).filter(User.email == user_email).first()
+        user = (
+            db.query(User)
+            .filter(User.email == user_email)
+            .first()
+        )
+
         if not user:
             return []
-        return db.query(Task).filter(Task.user_id == user.id).all()
+
+        return (
+            db.query(Task)
+            .filter(Task.user_id == user.id)
+            .all()
+        )
 
     return db.query(Task).all()
 
 
-@app.get("/tasks/{task_id}", response_model=TaskResponse)
-async def get_task(task_id: int, db: Session = Depends(get_db)):
-    task = db.query(Task).filter(Task.id == task_id).first()
+@app.get(
+    "/tasks/{task_id}",
+    response_model=TaskResponse,
+)
+async def get_task(
+    task_id: int,
+    db: Session = Depends(get_db),
+):
+    task = (
+        db.query(Task)
+        .filter(Task.id == task_id)
+        .first()
+    )
+
     if not task:
-        raise HTTPException(status_code=404, detail="Task not found")
+        raise HTTPException(
+            status_code=404,
+            detail="Task not found",
+        )
+
     return task
 
 
-@app.put("/tasks/{task_id}", response_model=TaskResponse)
-async def update_task(task_id: int, task_update: TaskUpdate, db: Session = Depends(get_db)):
-    task = db.query(Task).filter(Task.id == task_id).first()
-    if not task:
-        raise HTTPException(status_code=404, detail="Task not found")
+@app.put(
+    "/tasks/{task_id}",
+    response_model=TaskResponse,
+)
+async def update_task(
+    task_id: int,
+    task_update: TaskUpdate,
+    db: Session = Depends(get_db),
+):
+    task = (
+        db.query(Task)
+        .filter(Task.id == task_id)
+        .first()
+    )
 
-    update_data = task_update.dict(exclude_unset=True)
+    if not task:
+        raise HTTPException(
+            status_code=404,
+            detail="Task not found",
+        )
+
+    update_data = task_update.dict(
+        exclude_unset=True
+    )
+
     for field, value in update_data.items():
-        setattr(task, field, value)
+        setattr(
+            task,
+            field,
+            value,
+        )
 
     task.updated_at = datetime.now()
+
     db.commit()
     db.refresh(task)
 
     if task_update.status == "completed":
-        await notification_manager.send_task_notification(task, "completed")
+        await notification_manager.send_task_notification(
+            task,
+            "completed",
+        )
+
     else:
-        await notification_manager.send_task_notification(task, "updated")
+        await notification_manager.send_task_notification(
+            task,
+            "updated",
+        )
 
     return task
 
 
 @app.delete("/tasks/{task_id}")
-async def delete_task(task_id: int, db: Session = Depends(get_db)):
-    task = db.query(Task).filter(Task.id == task_id).first()
-    if not task:
-        raise HTTPException(status_code=404, detail="Task not found")
+async def delete_task(
+    task_id: int,
+    db: Session = Depends(get_db),
+):
+    task = (
+        db.query(Task)
+        .filter(Task.id == task_id)
+        .first()
+    )
 
-    await notification_manager.send_task_notification(task, "deleted")
+    if not task:
+        raise HTTPException(
+            status_code=404,
+            detail="Task not found",
+        )
+
+    await notification_manager.send_task_notification(
+        task,
+        "deleted",
+    )
+
     db.delete(task)
     db.commit()
-    return {"message": "Task deleted successfully"}
+
+    return {
+        "message": "Task deleted successfully"
+    }
 
 
-@app.post("/chat", response_model=ChatResponse)
-async def chat_with_assistant(message: ChatMessage, db: Session = Depends(get_db)):
+# ============================================================
+# CHAT
+# ============================================================
+
+@app.post(
+    "/chat",
+    response_model=ChatResponse,
+)
+async def chat_with_assistant(
+    message: ChatMessage,
+    db: Session = Depends(get_db),
+):
     if not message.user_email:
-        raise HTTPException(status_code=400, detail="user_email is required")
+        raise HTTPException(
+            status_code=400,
+            detail="user_email is required",
+        )
 
-    user = get_or_create_user(db, message.user_email)
-    parsed_tasks = task_parser.parse_task_from_text(message.message)
+    user = get_or_create_user(
+        db,
+        message.user_email,
+    )
+
+    parsed_tasks = (
+        task_parser.parse_task_from_text(
+            message.message
+        )
+    )
 
     created_tasks = []
     updated_tasks = []
@@ -203,14 +374,25 @@ async def chat_with_assistant(message: ChatMessage, db: Session = Depends(get_db
             priority=task_data.priority,
             estimated_duration=task_data.estimated_duration,
             category=task_data.category,
-            notification_type=task_data.notification_type or "email",
+            notification_type=(
+                task_data.notification_type
+                or "email"
+            ),
             recipient_email=task_data.recipient_email,
-            reminder_minutes_before=task_data.reminder_minutes_before,
+            reminder_minutes_before=(
+                task_data.reminder_minutes_before
+            ),
             email_sent=False,
             user_id=user.id,
-            is_recurring=task_data.is_recurring or False,
-            recurring_pattern=task_data.recurring_pattern,
+            is_recurring=(
+                task_data.is_recurring
+                or False
+            ),
+            recurring_pattern=(
+                task_data.recurring_pattern
+            ),
         )
+
         db.add(db_task)
         created_tasks.append(db_task)
 
@@ -219,8 +401,11 @@ async def chat_with_assistant(message: ChatMessage, db: Session = Depends(get_db
     for db_task in created_tasks:
         db.refresh(db_task)
 
-    # Create response with refreshed tasks (now includes user_id)
-    response_text = generate_ai_response(message.message, created_tasks, message.user_email)
+    response_text = generate_ai_response(
+        message.message,
+        created_tasks,
+        message.user_email,
+    )
 
     return ChatResponse(
         response=response_text,
@@ -229,45 +414,183 @@ async def chat_with_assistant(message: ChatMessage, db: Session = Depends(get_db
     )
 
 
+# ============================================================
+# CHAT RESPONSE
+# ============================================================
+
 def generate_ai_response(
     user_message: str,
     parsed_tasks: List[TaskCreate],
     user_email: Optional[str] = None,
 ) -> str:
+
+    # --------------------------------------------------------
+    # NO TASK CREATED
+    # --------------------------------------------------------
+
     if not parsed_tasks:
+        normalized = (
+            user_message
+            .lower()
+            .strip()
+        )
+
+        # ----------------------------------------------------
+        # SPECIAL CASE:
+        # USER EXPLICITLY SAID "TODAY"
+        # BUT REQUESTED TIME ALREADY PASSED
+        # ----------------------------------------------------
+
+        if "today" in normalized:
+            time_match = re.search(
+                r"\b(1[0-2]|0?[1-9])"
+                r"(?::([0-5]\d))?"
+                r"\s*(am|pm)\b",
+                normalized,
+                re.IGNORECASE,
+            )
+
+            if time_match:
+                hour = int(
+                    time_match.group(1)
+                )
+
+                minute = int(
+                    time_match.group(2) or 0
+                )
+
+                meridiem = (
+                    time_match
+                    .group(3)
+                    .lower()
+                )
+
+                if (
+                    meridiem == "pm"
+                    and hour != 12
+                ):
+                    hour += 12
+
+                elif (
+                    meridiem == "am"
+                    and hour == 12
+                ):
+                    hour = 0
+
+                now = datetime.now()
+
+                requested_time = now.replace(
+                    hour=hour,
+                    minute=minute,
+                    second=0,
+                    microsecond=0,
+                )
+
+                if requested_time <= now:
+                    formatted_time = (
+                        requested_time
+                        .strftime("%I:%M %p")
+                        .lstrip("0")
+                    )
+
+                    return (
+                        f"{formatted_time} today has already passed. "
+                        "Please choose another time."
+                    )
+
+        # ----------------------------------------------------
+        # NORMAL FALLBACK
+        # ----------------------------------------------------
+
         return (
             "I didn't detect any specific tasks in your message. "
             "Could you try rephrasing it? For example: "
             "'Remind me to send the project tomorrow'"
         )
 
+    # --------------------------------------------------------
+    # TASK CREATED
+    # --------------------------------------------------------
+
     task_count = len(parsed_tasks)
 
     if task_count == 1:
         task = parsed_tasks[0]
-        response = f"I've created the task: '{task.title}'"
+
+        response = (
+            f"I've created the task: "
+            f"'{task.title}'"
+        )
 
         if task.deadline:
-            response += f" with deadline {task.deadline.strftime('%B %d at %I:%M %p')}"
+            response += (
+                " with deadline "
+                + task.deadline.strftime(
+                    "%B %d at %I:%M %p"
+                )
+            )
 
-        if task.priority and task.priority > 1:
-            priority_text = "high" if task.priority == 3 else "medium"
-            response += f" and marked it as {priority_text} priority"
+        if (
+            task.priority
+            and task.priority > 1
+        ):
+            priority_text = (
+                "high"
+                if task.priority == 3
+                else "medium"
+            )
 
-        if task.notification_type == "email" and user_email:
-            response += f" and I will send an email reminder to {user_email}"
+            response += (
+                f" and marked it as "
+                f"{priority_text} priority"
+            )
+
+        if (
+            task.notification_type == "email"
+            and user_email
+        ):
+            response += (
+                " and I will send an email reminder "
+                f"to {user_email}"
+            )
+
             if task.reminder_minutes_before:
-                response += f" {task.reminder_minutes_before} minutes before"
+                response += (
+                    f" {task.reminder_minutes_before} "
+                    "minutes before"
+                )
 
         response += "."
-    else:
-        response = f"I've created {task_count} tasks for you: "
-        task_titles = [f"'{task.title}'" for task in parsed_tasks]
-        response += ", ".join(task_titles) + "."
 
-    response += " Is there anything else you'd like me to help you with?"
+    # --------------------------------------------------------
+    # MULTIPLE TASKS
+    # --------------------------------------------------------
+
+    else:
+        response = (
+            f"I've created {task_count} tasks for you: "
+        )
+
+        task_titles = [
+            f"'{task.title}'"
+            for task in parsed_tasks
+        ]
+
+        response += (
+            ", ".join(task_titles)
+            + "."
+        )
+
+    response += (
+        " Is there anything else you'd like me to help you with?"
+    )
+
     return response
 
+
+# ============================================================
+# SCHEDULE
+# ============================================================
 
 @app.get("/schedule")
 async def get_schedule(
@@ -275,13 +598,28 @@ async def get_schedule(
     db: Session = Depends(get_db),
 ):
     if user_email:
-        user = get_user_or_404(db, user_email)
-        tasks = db.query(Task).filter(Task.user_id == user.id).all()
+        user = get_user_or_404(
+            db,
+            user_email,
+        )
+
+        tasks = (
+            db.query(Task)
+            .filter(Task.user_id == user.id)
+            .all()
+        )
+
     else:
         tasks = db.query(Task).all()
 
-    return task_planner.suggest_schedule(tasks)
+    return task_planner.suggest_schedule(
+        tasks
+    )
 
+
+# ============================================================
+# CONFLICTS
+# ============================================================
 
 @app.get("/conflicts")
 async def get_conflicts(
@@ -289,13 +627,28 @@ async def get_conflicts(
     db: Session = Depends(get_db),
 ):
     if user_email:
-        user = get_user_or_404(db, user_email)
-        tasks = db.query(Task).filter(Task.user_id == user.id).all()
+        user = get_user_or_404(
+            db,
+            user_email,
+        )
+
+        tasks = (
+            db.query(Task)
+            .filter(Task.user_id == user.id)
+            .all()
+        )
+
     else:
         tasks = db.query(Task).all()
 
-    return task_planner.detect_conflicts(tasks)
+    return task_planner.detect_conflicts(
+        tasks
+    )
 
+
+# ============================================================
+# AUTO RESCHEDULE
+# ============================================================
 
 @app.post("/auto-reschedule")
 async def auto_reschedule(
@@ -303,26 +656,55 @@ async def auto_reschedule(
     db: Session = Depends(get_db),
 ):
     if user_email:
-        user = get_user_or_404(db, user_email)
-        tasks = db.query(Task).filter(Task.user_id == user.id).all()
+        user = get_user_or_404(
+            db,
+            user_email,
+        )
+
+        tasks = (
+            db.query(Task)
+            .filter(Task.user_id == user.id)
+            .all()
+        )
+
     else:
         tasks = db.query(Task).all()
 
-    conflicts = task_planner.detect_conflicts(tasks)
+    conflicts = (
+        task_planner.detect_conflicts(
+            tasks
+        )
+    )
+
     updated_tasks = []
 
     for conflict in conflicts:
         if conflict["type"] == "overload":
-            rescheduled = task_planner.auto_reschedule(tasks, conflict)
-            updated_tasks.extend(rescheduled)
+            rescheduled = (
+                task_planner.auto_reschedule(
+                    tasks,
+                    conflict,
+                )
+            )
+
+            updated_tasks.extend(
+                rescheduled
+            )
 
     db.commit()
 
     return {
-        "message": f"Rescheduled {len(updated_tasks)} tasks",
+        "message": (
+            f"Rescheduled "
+            f"{len(updated_tasks)} tasks"
+        ),
         "updated_tasks": updated_tasks,
     }
 
+
+# ============================================================
+# INSIGHTS
+# ============================================================
 
 @app.get("/insights")
 async def get_insights(
@@ -330,18 +712,38 @@ async def get_insights(
     db: Session = Depends(get_db),
 ):
     if user_email:
-        user = get_user_or_404(db, user_email)
-        tasks = db.query(Task).filter(Task.user_id == user.id).all()
+        user = get_user_or_404(
+            db,
+            user_email,
+        )
+
+        tasks = (
+            db.query(Task)
+            .filter(Task.user_id == user.id)
+            .all()
+        )
+
     else:
         tasks = db.query(Task).all()
 
-    return task_planner.get_productivity_insights(tasks)
+    return (
+        task_planner
+        .get_productivity_insights(
+            tasks
+        )
+    )
 
+
+# ============================================================
+# GOOGLE CALENDAR STATUS
+# ============================================================
 
 @app.get("/calendar/status")
 async def get_calendar_status():
     return {
-        "authenticated": calendar_integration.is_authenticated(),
+        "authenticated":
+            calendar_integration.is_authenticated(),
+
         "message": (
             "Connected to Google Calendar"
             if calendar_integration.is_authenticated()
@@ -350,14 +752,35 @@ async def get_calendar_status():
     }
 
 
+# ============================================================
+# GOOGLE CALENDAR EVENTS
+# ============================================================
+
 @app.get("/calendar/events")
-async def get_calendar_events(days_ahead: int = 7):
+async def get_calendar_events(
+    days_ahead: int = 7,
+):
     if not calendar_integration.is_authenticated():
-        return {"error": "Not authenticated with Google Calendar"}
+        return {
+            "error":
+                "Not authenticated with Google Calendar"
+        }
 
-    events = calendar_integration.get_upcoming_events(days_ahead)
-    return {"events": events}
+    events = (
+        calendar_integration
+        .get_upcoming_events(
+            days_ahead
+        )
+    )
 
+    return {
+        "events": events
+    }
+
+
+# ============================================================
+# CALENDAR SYNC
+# ============================================================
 
 @app.post("/calendar/sync")
 async def sync_tasks_to_calendar(
@@ -365,102 +788,214 @@ async def sync_tasks_to_calendar(
     db: Session = Depends(get_db),
 ):
     if not calendar_integration.is_authenticated():
-        return {"error": "Not authenticated with Google Calendar"}
+        return {
+            "error":
+                "Not authenticated with Google Calendar"
+        }
 
     if user_email:
-        user = get_user_or_404(db, user_email)
-        tasks = db.query(Task).filter(
-            Task.user_id == user.id,
-            Task.deadline.isnot(None),
-            Task.status != "completed",
-        ).all()
+        user = get_user_or_404(
+            db,
+            user_email,
+        )
+
+        tasks = (
+            db.query(Task)
+            .filter(
+                Task.user_id == user.id,
+                Task.deadline.isnot(None),
+                Task.status != "completed",
+            )
+            .all()
+        )
+
     else:
-        tasks = db.query(Task).filter(
-            Task.deadline.isnot(None),
-            Task.status != "completed",
-        ).all()
+        tasks = (
+            db.query(Task)
+            .filter(
+                Task.deadline.isnot(None),
+                Task.status != "completed",
+            )
+            .all()
+        )
 
     task_dicts = [
         {
             "id": task.id,
             "title": task.title,
-            "description": task.description or "",
-            "deadline": task.deadline.isoformat() if task.deadline else None,
-            "estimated_duration": task.estimated_duration or 1.0,
+            "description": (
+                task.description
+                or ""
+            ),
+            "deadline": (
+                task.deadline.isoformat()
+                if task.deadline
+                else None
+            ),
+            "estimated_duration": (
+                task.estimated_duration
+                or 1.0
+            ),
         }
         for task in tasks
     ]
 
-    return calendar_integration.sync_tasks_to_calendar(task_dicts)
+    return (
+        calendar_integration
+        .sync_tasks_to_calendar(
+            task_dicts
+        )
+    )
 
+
+# ============================================================
+# CALENDAR SUMMARY
+# ============================================================
 
 @app.get("/calendar/summary")
-async def get_calendar_summary(days_ahead: int = 7):
+async def get_calendar_summary(
+    days_ahead: int = 7,
+):
     if not calendar_integration.is_authenticated():
-        return {"error": "Not authenticated with Google Calendar"}
+        return {
+            "error":
+                "Not authenticated with Google Calendar"
+        }
 
-    return calendar_integration.get_calendar_summary(days_ahead)
+    return (
+        calendar_integration
+        .get_calendar_summary(
+            days_ahead
+        )
+    )
 
+
+# ============================================================
+# RECURRING TASKS
+# ============================================================
 
 @app.post("/recurring/process")
-async def process_recurring_tasks(db: Session = Depends(get_db)):
-    """Manually trigger recurring task processing"""
-    created_tasks = recurring_task_manager.process_recurring_tasks(db)
+async def process_recurring_tasks(
+    db: Session = Depends(get_db),
+):
+    created_tasks = (
+        recurring_task_manager
+        .process_recurring_tasks(
+            db
+        )
+    )
+
     return {
-        "message": f"Processed recurring tasks, created {len(created_tasks)} new instances",
-        "created_tasks": created_tasks
+        "message": (
+            "Processed recurring tasks, created "
+            f"{len(created_tasks)} new instances"
+        ),
+        "created_tasks": created_tasks,
     }
 
 
-@app.put("/tasks/{task_id}/complete-recurring")
-async def complete_recurring_task(task_id: int, db: Session = Depends(get_db)):
-    """Complete a recurring task and create next instance"""
-    task = db.query(Task).filter(Task.id == task_id).first()
+@app.put(
+    "/tasks/{task_id}/complete-recurring"
+)
+async def complete_recurring_task(
+    task_id: int,
+    db: Session = Depends(get_db),
+):
+    task = (
+        db.query(Task)
+        .filter(Task.id == task_id)
+        .first()
+    )
+
     if not task:
-        raise HTTPException(status_code=404, detail="Task not found")
-    
-    success = recurring_task_manager.mark_instance_completed(db, task)
-    
-    await notification_manager.send_task_notification(task, "completed")
-    
+        raise HTTPException(
+            status_code=404,
+            detail="Task not found",
+        )
+
+    success = (
+        recurring_task_manager
+        .mark_instance_completed(
+            db,
+            task,
+        )
+    )
+
+    await notification_manager.send_task_notification(
+        task,
+        "completed",
+    )
+
     return {
         "message": "Task completed",
-        "next_instance_created": success
+        "next_instance_created": success,
     }
 
 
+# ============================================================
+# MEETING SCHEDULER
+# ============================================================
+
 @app.post("/meeting/suggest")
-async def suggest_meeting_times(request: MeetingRequest):
-    """Suggest multiple meeting time options"""
-    result = meeting_scheduler.suggest_meeting_times(
-        title=request.title,
-        duration_hours=request.duration_hours,
-        participants=request.participants,
-        preferred_days=request.preferred_days,
-        preferred_time_start=request.preferred_time_start,
-        preferred_time_end=request.preferred_time_end,
-        days_ahead=request.days_ahead
+async def suggest_meeting_times(
+    request: MeetingRequest,
+):
+    result = (
+        meeting_scheduler
+        .suggest_meeting_times(
+            title=request.title,
+            duration_hours=request.duration_hours,
+            participants=request.participants,
+            preferred_days=request.preferred_days,
+            preferred_time_start=request.preferred_time_start,
+            preferred_time_end=request.preferred_time_end,
+            days_ahead=request.days_ahead,
+        )
     )
+
     return result
 
 
 @app.post("/meeting/best")
-async def find_best_meeting_time(request: MeetingRequest):
-    """Find the single best meeting time with reasoning"""
-    result = meeting_scheduler.find_best_meeting_time(
-        title=request.title,
-        duration_hours=request.duration_hours,
-        participants=request.participants,
-        urgency=request.urgency
+async def find_best_meeting_time(
+    request: MeetingRequest,
+):
+    result = (
+        meeting_scheduler
+        .find_best_meeting_time(
+            title=request.title,
+            duration_hours=request.duration_hours,
+            participants=request.participants,
+            urgency=request.urgency,
+        )
     )
+
     return result
 
 
-@app.websocket("/ws")
-async def websocket_route(websocket: WebSocket):
-    await websocket_endpoint(websocket, lambda: SessionLocal())
+# ============================================================
+# WEBSOCKET
+# ============================================================
 
+@app.websocket("/ws")
+async def websocket_route(
+    websocket: WebSocket,
+):
+    await websocket_endpoint(
+        websocket,
+        lambda: SessionLocal(),
+    )
+
+
+# ============================================================
+# START SERVER
+# ============================================================
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8001)
+
+    uvicorn.run(
+        app,
+        host="0.0.0.0",
+        port=8001,
+    )

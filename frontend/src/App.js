@@ -482,7 +482,7 @@ function App() {
       <main className="w-full px-8 sm:px-10 lg:px-14 xl:px-16 py-2 flex-1 min-h-0 overflow-hidden">
         {/* CHAT */}
         {activeTab === 'chat' && (
-         <div className="grid grid-cols-1 lg:grid-cols-[240px_minmax(0,1fr)_300px] xl:grid-cols-[260px_minmax(0,1fr)_320px] gap-6 xl:gap-8 h-full min-h-0 overflow-hidden">
+         <div className="grid grid-cols-1 lg:grid-cols-[240px_minmax(0,1fr)_300px] xl:grid-cols-[260px_minmax(0,1fr)_320px] grid-rows-[minmax(0,1fr)] gap-6 xl:gap-8 h-full min-h-0 overflow-hidden">
             {/* LEFT */}
             <div className="hidden lg:block lg:h-full">
               <div className="h-full flex flex-col justify-start pt-12 xl:pt-14">
@@ -734,7 +734,7 @@ function App() {
 
                 {/* INPUT */}
                 <div
-                  className="border-t border-purple-100 px-4 py-3 shrink-0"
+                  className="border-t border-purple-100 px-4 py-2 shrink-0"
                   style={{ backgroundColor: '#FAF8FF' }}
                 >
                   <div className="flex space-x-3">
@@ -766,8 +766,8 @@ function App() {
             </div>
 
             {/* RIGHT */}
-            <div className="hidden lg:block lg:h-full">
-              <div className="h-full flex flex-col">
+             <div className="hidden lg:block h-full min-h-0 overflow-hidden">
+              <div className="h-full min-h-0 flex flex-col overflow-hidden">
                 <div className="space-y-4">
                   {/* SUGGESTIONS */}
                   <div className="bg-white rounded-xl p-5 shadow-sm border border-purple-100">

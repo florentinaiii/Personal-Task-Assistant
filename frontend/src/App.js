@@ -37,7 +37,7 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [showTypingIndicator, setShowTypingIndicator] = useState(false);
   const [meetingTitle, setMeetingTitle] = useState('');
-  const [meetingDuration, setMeetingDuration] = useState(1.0);
+  const [meetingDuration, setMeetingDuration] = useState('1.0');
   const [meetingUrgency, setMeetingUrgency] = useState('normal');
   const [meetingSuggestions, setMeetingSuggestions] = useState(null);
 
@@ -215,7 +215,7 @@ function App() {
       console.log('Sending request to /meeting/best');
       const response = await axios.post('/meeting/best', {
         title: meetingTitle,
-        duration_hours: meetingDuration,
+        duration_hours: Number(meetingDuration),
         urgency: meetingUrgency,
       });
       console.log('Response received:', response.data);
@@ -1296,23 +1296,17 @@ function App() {
                     Duration (hours)
                   </label>
 
-                  <select
-                    value={meetingDuration}
-                    onChange={(e) =>
-                      setMeetingDuration(
-                        parseFloat(e.target.value)
-                      )
-                    }
-                    className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
-                    style={{ borderColor: '#E8D9FF' }}
-                  >
-                    <option value="0.5">
-                      0.5 hours (30 min)
-                    </option>
-                    <option value="1.0">1.0 hours</option>
-                    <option value="1.5">1.5 hours</option>
-                    <option value="2.0">2.0 hours</option>
-                  </select>
+                     <select
+                       value={meetingDuration}
+                       onChange={(e) => setMeetingDuration(e.target.value)}
+                       className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+                       style={{ borderColor: '#E8D9FF' }}
+                     >
+                       <option value="0.5">0.5 hours (30 min)</option>
+                       <option value="1.0">1.0 hour</option>
+                       <option value="1.5">1.5 hours</option>
+                       <option value="2.0">2.0 hours</option>
+                     </select>
                 </div>
 
                 <div>

@@ -9,7 +9,7 @@ body {
     sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  background-color: #f8fafc;
+  background-color: #FAF8FF;
 }
 
 code {
@@ -17,38 +17,65 @@ code {
     monospace;
 }
 
+/* Custom color system */
+:root {
+  --primary-purple: #7C2BD1;
+  --secondary-purple: #9B4DE3;
+  --pale-lavender: #F3EEFF;
+  --light-lavender: #FAF8FF;
+  --dark-navy: #17143D;
+  --success-green: #10B981;
+}
+
 .task-card {
-  @apply bg-white rounded-lg shadow-sm border border-gray-200 p-4 mb-3 transition-all hover:shadow-md;
+  @apply bg-white rounded-lg shadow-sm border border-purple-100 p-4 mb-3 transition-all hover:shadow-md;
 }
 
 .priority-high {
-  @apply border-l-4 border-l-red-500;
+  @apply border-l-4 border-l-purple-600;
 }
 
 .priority-medium {
-  @apply border-l-4 border-l-yellow-500;
+  @apply border-l-4 border-l-purple-400;
 }
 
 .priority-low {
-  @apply border-l-4 border-l-green-500;
+  @apply border-l-4 border-l-purple-300;
 }
 
 .status-completed {
   @apply opacity-60;
 }
 
-.chat-message {
-  @apply max-w-3xl mx-auto p-4 rounded-lg mb-4;
-}
-
-.user-message {
-  @apply bg-blue-500 text-white ml-auto;
-}
-
-.assistant-message {
-  @apply bg-gray-100 text-gray-800 mr-auto;
-}
-
 .insight-card {
-  @apply bg-white rounded-lg shadow-sm border border-gray-200 p-4;
+  @apply bg-white rounded-lg shadow-sm border border-purple-100 p-4;
+}
+
+
+
+/* Custom scrollbar */
+.chat-container::-webkit-scrollbar {
+  width: 6px;
+}
+
+.chat-container::-webkit-scrollbar-track {
+  background: #F3EEFF;
+  border-radius: 3px;
+}
+
+.chat-container::-webkit-scrollbar-thumb {
+  background: #9B4DE3;
+  border-radius: 3px;
+}
+
+.chat-container::-webkit-scrollbar-thumb:hover {
+  background: #7C2BD1;
+}
+
+/* Purple gradient text class for React components */
+.gradient-text {
+  background: linear-gradient(135deg, #7C2BD1, #9B4DE3);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
 }

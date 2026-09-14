@@ -815,11 +815,11 @@ function App() {
                   </div>
 
                   {/* LARGE ROBOT IMAGE */}
-                  <div className="flex justify-center pt-1">
+                  <div className="flex-1 min-h-0 flex items-start justify-center pt-3 overflow-hidden">
                     <img
                       src={robot}
                       alt="AI Assistant"
-                      className="w-full h-full max-w-[285px] xl:max-w-[310px] object-contain"
+                      className="w-auto h-auto max-w-[245px] xl:max-w-[260px] max-h-[300px] object-contain"
                       style={{
                         filter:
                           'drop-shadow(0 16px 30px rgba(124, 43, 209, 0.08))',

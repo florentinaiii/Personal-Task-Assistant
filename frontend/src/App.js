@@ -250,7 +250,7 @@ function App() {
       const taskData = {
         title: meetingSuggestions.title,
         description: `Meeting scheduled via AI scheduler. Reasoning: ${meetingSuggestions.reasoning}`,
-        deadline: new Date(meetingSuggestions.start_time).toISOString(),
+        deadline: meetingSuggestions.start_time,
         priority: 2, // Medium priority for meetings
         estimated_duration: meetingSuggestions.duration_hours,
         category: 'Meeting',

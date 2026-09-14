@@ -360,13 +360,13 @@ function App() {
 
   return (
       <div
-            className="min-h-screen lg:h-screen lg:flex lg:flex-col lg:overflow-hidden"
+            className="h-[100dvh] flex flex-col overflow-hidden"
             style={{ backgroundColor: '#FAF8FF' }}
       >
       {/* HEADER */}
-      <header className="bg-white shadow-sm border-b border-purple-100 lg:flex-shrink-0">
+      <header className="bg-white shadow-sm border-b border-purple-100 shrink-0">
         <div className="w-full px-6 sm:px-8 lg:px-10 xl:px-12">
-          <div className="flex flex-col sm:flex-row justify-between items-center py-4 space-y-4 sm:space-y-0">
+          <div className="flex flex-col sm:flex-row justify-between items-center py-3 space-y-3 sm:space-y-0">
             <div className="flex items-center space-x-3">
               <img
                 src={logo}
@@ -479,10 +479,10 @@ function App() {
       </header>
 
       {/* MAIN */}
-      <main className="w-full px-8 sm:px-10 lg:px-14 xl:px-16 py-5 lg:flex-1 lg:min-h-0 lg:overflow-hidden">
+      <main className="w-full px-8 sm:px-10 lg:px-14 xl:px-16 py-3 flex-1 min-h-0 overflow-hidden">
         {/* CHAT */}
         {activeTab === 'chat' && (
-          <div className="grid grid-cols-1 lg:grid-cols-[240px_minmax(0,1fr)_300px] xl:grid-cols-[260px_minmax(0,1fr)_320px] gap-6 xl:gap-8 lg:h-full lg:min-h-0">
+         <div className="grid grid-cols-1 lg:grid-cols-[240px_minmax(0,1fr)_300px] xl:grid-cols-[260px_minmax(0,1fr)_320px] gap-6 xl:gap-8 h-full min-h-0">
             {/* LEFT */}
             <div className="hidden lg:block lg:h-full">
               <div className="h-full flex flex-col justify-start pt-12 xl:pt-14">
@@ -564,8 +564,8 @@ function App() {
             </div>
 
             {/* CENTER CHAT */}
-            <div className="min-w-0 lg:h-full lg:min-h-0">
-              <div className="bg-white rounded-[24px] shadow-sm border border-purple-100 flex flex-col overflow-hidden min-h-0 h-[650px] lg:h-full">
+            <div className="min-w-0 h-full min-h-0">
+              <div className="bg-white rounded-[24px] shadow-sm border border-purple-100 flex flex-col overflow-hidden h-full min-h-0">
                 {/* TODAY */}
                 <div className="px-6 pt-4 pb-2 text-center flex-shrink-0">
                   <span

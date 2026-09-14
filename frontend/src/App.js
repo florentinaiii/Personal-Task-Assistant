@@ -1,6 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { format } from 'date-fns';
+
+const API_URL =
+  process.env.REACT_APP_API_URL || 'http://localhost:8001';
+
+axios.defaults.baseURL = API_URL;
 import {
   Send,
   Calendar,

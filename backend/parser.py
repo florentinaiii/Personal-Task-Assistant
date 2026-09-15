@@ -4,6 +4,12 @@ from typing import List, Optional
 
 from dateutil import parser as date_parser
 
+try:
+    import spacy
+    _NLP = spacy.load("en_core_web_sm")
+except (ImportError, OSError):
+    _NLP = None
+
 from models import TaskCreate
 
 
@@ -359,6 +365,22 @@ class TaskParser:
             flags=re.IGNORECASE,
         )
 
+        # Remove the entire reminder clause before spaCy extracts the action.
+        action_text = re.sub(
+            r",?\s*(?:and\s+)?(?:please\s+)?remind\s+me\b.*$",
+            " ",
+            action_text,
+            flags=re.IGNORECASE,
+        )
+
+        action_text = re.sub(
+            r",?\s*(?:and\s+)?(?:please\s+)?(?:send\s+me|give\s+me)\s+"
+            r"(?:a\s+)?(?:reminder|notification)\b.*$",
+            " ",
+            action_text,
+            flags=re.IGNORECASE,
+        )
+
         action_text = re.sub(
             r"\b(?:at|by)\b",
             " ",
@@ -372,7 +394,7 @@ class TaskParser:
             action_text,
         ).strip(" ,.-?!:;")
 
-        title = self._clean_title(action_text)
+        title = self._extract_action_title(action_text)
 
         if not title:
             title = "Reminder"
@@ -647,7 +669,7 @@ class TaskParser:
                 cleaned
             )
 
-            title = self._clean_title(
+            title = self._extract_action_title(
                 cleaned
             )
 
@@ -759,7 +781,7 @@ class TaskParser:
             cleaned
         )
 
-        title = self._clean_title(
+        title = self._extract_action_title(
             cleaned
         )
 
@@ -1259,6 +1281,111 @@ class TaskParser:
         return None
 
     # =========================================================
+    # NLP ACTION TITLE (spaCy + regex fallback)
+    # =========================================================
+
+    def _extract_action_title(self, text: str) -> str:
+        """Extract a short natural task title from conversational text.
+
+        spaCy identifies the main actionable verb and its object. The existing
+        regex cleaner is kept as a safe fallback and for metadata cleanup.
+        """
+        rule_cleaned = self._clean_title(text)
+
+        if not rule_cleaned:
+            return ""
+
+        if _NLP is None:
+            return rule_cleaned
+
+        doc = _NLP(rule_cleaned)
+
+        ignored_verbs = {
+            "be", "can", "could", "do", "forget", "go", "have",
+            "let", "may", "might", "must", "need", "please",
+            "remember", "remind", "should", "want", "will", "would",
+        }
+
+        action = None
+        for token in doc:
+            if token.pos_ in {"VERB", "AUX"} and token.lemma_.lower() not in ignored_verbs:
+                action = token
+                break
+
+        # Noun-style titles such as "Dentist appointment" or the existing
+        # "Team meeting" normalization are already good task titles.
+        if action is None:
+            return rule_cleaned
+
+        selected = {action.i}
+
+        # Keep particles: "pick up", "log in", etc.
+        for child in action.children:
+            if child.dep_ in {"prt", "compound:prt"}:
+                selected.add(child.i)
+
+        # Keep the direct/indirect object and its complete noun phrase.
+        object_deps = {"obj", "dobj", "iobj", "attr", "oprd"}
+        for child in action.children:
+            if child.dep_ in object_deps:
+                for item in child.subtree:
+                    if item.pos_ != "PUNCT":
+                        selected.add(item.i)
+
+        # Keep useful complements/prepositional phrases when they describe
+        # the action, but not temporal/reminder metadata.
+        temporal_words = {
+            "today", "tomorrow", "tonight", "later", "morning",
+            "afternoon", "evening", "monday", "tuesday", "wednesday",
+            "thursday", "friday", "saturday", "sunday",
+        }
+        for child in action.children:
+            if child.dep_ in {"prep", "obl"}:
+                subtree = list(child.subtree)
+                lower_words = {t.lemma_.lower() for t in subtree}
+                if lower_words & temporal_words:
+                    continue
+                if lower_words & {"remind", "reminder", "notify", "email"} and action.lemma_.lower() != "email":
+                    continue
+                for item in subtree:
+                    if item.pos_ != "PUNCT":
+                        selected.add(item.i)
+
+        # If the action has an infinitive/xcomp complement, prefer the more
+        # specific action (e.g. "go buy groceries" -> "Buy groceries").
+        for child in action.children:
+            if child.dep_ in {"xcomp", "ccomp"} and child.pos_ == "VERB":
+                if child.lemma_.lower() not in ignored_verbs:
+                    nested = self._extract_action_title(child.text_with_ws + " ".join(t.text for t in child.subtree if t.i != child.i))
+                    if nested:
+                        return nested
+
+        words = [doc[i].text for i in sorted(selected)]
+        title = " ".join(words).strip(" ,.-?!:;")
+
+        # If dependency parsing did not capture an object, keep the already
+        # cleaned phrase rather than returning a bare verb.
+        if len(words) <= 1 and len(rule_cleaned.split()) > 1:
+            # Remove a leading conversational subject if one survived.
+            fallback = re.sub(r"^\s*(?:i|we|you)\s+", "", rule_cleaned, flags=re.IGNORECASE)
+            fallback = re.sub(r"\s+(?:remind me(?: that)?|remember this|please)\s*$", "", fallback, flags=re.IGNORECASE)
+            fallback = re.sub(r"^\s*go\s+", "", fallback, flags=re.IGNORECASE)
+            fallback = re.sub(r"\s+", " ", fallback).strip(" ,.-?!:;")
+            if fallback:
+                title = fallback
+
+        # Final cleanup for conversational leftovers that are not task content.
+        title = re.sub(r"^\s*(?:i|we|you)\s+", "", title, flags=re.IGNORECASE)
+        title = re.sub(r"^\s*go\s+", "", title, flags=re.IGNORECASE)
+        title = re.sub(r"\s+(?:later\s+)?remind me(?: that)?\s*$", "", title, flags=re.IGNORECASE)
+        title = re.sub(r"\s+", " ", title).strip(" ,.-?!:;")
+
+        if not title:
+            return rule_cleaned
+
+        return title[0].upper() + title[1:]
+
+    # =========================================================
     # CLEAN TITLE
     # =========================================================
 
@@ -1381,9 +1508,15 @@ class TaskParser:
         for pattern in date_patterns:
             cleaned = re.sub(pattern, " ", cleaned, flags=re.IGNORECASE)
 
+        month_names = (
+            r"(?:january|february|march|april|may|june|july|august|"
+            r"september|october|november|december|jan|feb|mar|apr|jun|"
+            r"jul|aug|sep|sept|oct|nov|dec)"
+        )
+
         explicit_date_patterns = [
-            r"\bon\s+\w+\s+\d{1,2}(?:st|nd|rd|th)?\b",
-            r"\b\w+\s+\d{1,2}(?:st|nd|rd|th)?\b",
+            rf"\bon\s+{month_names}\s+\d{{1,2}}(?:st|nd|rd|th)?\b",
+            rf"\b{month_names}\s+\d{{1,2}}(?:st|nd|rd|th)?\b",
             r"\bon\s+\d{1,2}/\d{1,2}/\d{2,4}\b",
             r"\b\d{1,2}/\d{1,2}/\d{2,4}\b",
             r"\bon\s+\d{1,2}-\d{1,2}-\d{2,4}\b",

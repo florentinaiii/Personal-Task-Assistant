@@ -142,7 +142,7 @@ class TaskParser:
         # -----------------------------------------------------
 
         in_minutes_match = re.search(
-            r"\bin\s+(\d+)\s*minutes?\b",
+            r"\b(?:in|after)\s+(\d+)\s*minutes?\b",
             normalized_text,
             re.IGNORECASE,
         )
@@ -638,14 +638,14 @@ class TaskParser:
         # -----------------------------------------------------
 
         in_minutes_match = re.search(
-            r"\bin\s+(\d+)\s*minutes?\b",
+            r"\b(?:in|after)\s+(\d+)\s*minutes?\b",
             self.normalize_text(original_text),
             re.IGNORECASE,
         )
 
         if in_minutes_match:
             main_action = re.sub(
-                r"\bin\s+\d+\s*minutes?\b",
+                r"\b(?:in|after)\s+\d+\s*minutes?\b",
                 "",
                 original_text,
                 flags=re.IGNORECASE,
@@ -888,7 +888,7 @@ class TaskParser:
         # -----------------------------------------------------
 
         match = re.search(
-            r"\bin (\d+)\s*minutes?\b",
+            r"\b(?:in|after)\s+(\d+)\s*minutes?\b",
             text,
             re.IGNORECASE,
         )
@@ -906,7 +906,7 @@ class TaskParser:
         # -----------------------------------------------------
 
         match = re.search(
-            r"\bin (\d+)\s*hours?\b",
+            r"\b(?:in|after)\s+(\d+)\s*hours?\b",
             text,
             re.IGNORECASE,
         )
@@ -924,7 +924,7 @@ class TaskParser:
         # -----------------------------------------------------
 
         match = re.search(
-            r"\bin (\d+)\s*days?\b",
+            r"\b(?:in|after)\s+(\d+)\s*days?\b",
             text,
             re.IGNORECASE,
         )
@@ -1044,11 +1044,17 @@ class TaskParser:
         # EXPLICIT DATES
         # -----------------------------------------------------
 
+        month_names = (
+            r"(?:january|february|march|april|may|june|july|august|"
+            r"september|october|november|december|jan|feb|mar|apr|jun|"
+            r"jul|aug|sep|sept|oct|nov|dec)"
+        )
+
         patterns = [
             r"(\d{1,2}/\d{1,2}/\d{4})",
             r"(\d{1,2}-\d{1,2}-\d{4})",
-            r"(next \w+)",
-            r"(\w+ \d{1,2})",
+            r"(next\s+(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday))",
+            rf"({month_names}\s+\d{{1,2}}(?:st|nd|rd|th)?)",
         ]
 
         for pattern in patterns:
@@ -1484,6 +1490,9 @@ class TaskParser:
             cleaned = re.sub(pattern, " ", cleaned, flags=re.IGNORECASE)
 
         reminder_patterns = [
+            # General trailing reminder instruction:
+            # "I need to pray by 8:15pm, remind me" -> "Pray"
+            r",?\s*(?:and\s+)?(?:please\s+)?remind\s+me(?:\s+that)?\s*$",
             r",?\s*(?:and\s+)?remind me\s+\d+\s*minutes?\s+before.*$",
             r",?\s*(?:and\s+)?remind me\s+\d+\s*hours?\s+before.*$",
             r",?\s*(?:and\s+)?remind me\s+before\s+"
@@ -1515,7 +1524,7 @@ class TaskParser:
             r"\bnext\s+(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b",
             r"\bthis\s+(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b",
             r"\bon\s+(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b",
-            r"\bin\s+\d+\s*(?:days?|hours?|minutes?)\b",
+            r"\b(?:in|after)\s+\d+\s*(?:days?|hours?|minutes?)\b",
         ]
 
         for pattern in date_patterns:
@@ -1778,7 +1787,7 @@ class TaskParser:
 
         # General in N minutes
         match = re.search(
-            r"\bin (\d+)\s*minutes?\b",
+            r"\b(?:in|after)\s+(\d+)\s*minutes?\b",
             normalized_text,
         )
 
@@ -1797,7 +1806,7 @@ class TaskParser:
 
         # General in N hours
         match = re.search(
-            r"\bin (\d+)\s*hours?\b",
+            r"\b(?:in|after)\s+(\d+)\s*hours?\b",
             normalized_text,
         )
 

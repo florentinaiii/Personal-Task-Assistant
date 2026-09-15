@@ -1,193 +1,436 @@
 # AI Personal Task Management Assistant
 
-An autonomous AI-based personal assistant for daily task management, built with FastAPI backend and React frontend.
+An AI-based personal assistant designed to help users create, organize, schedule, and manage daily tasks through natural language.
+
+The application combines a FastAPI backend, React frontend, rule-based task processing, and spaCy-based Natural Language Processing (NLP) to transform conversational user input into structured tasks.
 
 ## Features
 
-- **Natural Language Processing**: Parse tasks from natural language input
-- **Intelligent Prioritization**: Automatic task prioritization based on deadlines and importance
-- **Smart Scheduling**: AI-powered schedule suggestions and conflict detection
-- **Google Calendar Integration**: Sync tasks with Google Calendar
-- **Real-time Notifications**: WebSocket-based notifications for reminders and updates
-- **Productivity Insights**: Analytics and insights about task completion patterns
-- **Modern UI**: Clean, responsive React interface with Tailwind CSS
+- **Natural Language Task Creation** – Create tasks using conversational commands instead of manually filling out forms.
+- **Hybrid NLP Processing** – Uses spaCy together with deterministic parsing rules to extract task actions, deadlines, priorities, recurrence patterns, and reminder information.
+- **Task Management** – Create, view, update, complete, and delete personal tasks.
+- **Task Prioritization** – Detects priority indicators such as urgent, important, high, or low.
+- **Smart Scheduling** – Organizes tasks based on deadlines, priorities, and scheduling information.
+- **Recurring Tasks** – Supports daily, weekly, biweekly, monthly, and multiple-times-per-day task patterns.
+- **Automatic Rescheduling** – Supports reorganization of scheduled tasks when necessary.
+- **Meeting Scheduler** – Helps determine suitable meeting times within the application's scheduling logic.
+- **Email Reminders** – Sends task reminders through email using Brevo.
+- **Real-Time Notifications** – WebSocket-based communication for real-time application updates.
+- **Google Calendar Integration** – Optional integration for calendar functionality.
+- **Productivity Insights** – Provides information about task completion and productivity patterns.
+- **Multi-User Support** – Tasks and reminders are associated with individual user accounts.
+- **Responsive Interface** – React-based interface styled with Tailwind CSS.
 
-## Architecture
+## System Architecture
 
-```
+The project consists of two main components:
+
+```text
 project/
+│
 ├── backend/
-│   ├── main.py              # FastAPI application
-│   ├── models.py            # Database models
-│   ├── parser.py            # NLP task parser
-│   ├── planner.py           # Task planning algorithm
-│   ├── db.py               # Database setup
-│   ├── calendar_integration.py  # Google Calendar integration
-│   ├── notifications.py    # Real-time notifications
-│   └── requirements.txt     # Python dependencies
+│   ├── main.py
+│   ├── models.py
+│   ├── parser.py
+│   ├── planner.py
+│   ├── db.py
+│   ├── calendar_integration.py
+│   ├── notifications.py
+│   ├── email_service.py
+│   └── requirements.txt
 │
 ├── frontend/
 │   ├── src/
-│   │   ├── App.js          # Main React component
-│   │   ├── index.js        # React entry point
-│   │   └── index.css       # Tailwind CSS styles
+│   │   ├── App.js
+│   │   ├── index.js
+│   │   └── index.css
 │   ├── public/
-│   │   └── index.html      # HTML template
-│   ├── package.json        # Node.js dependencies
-│   └── tailwind.config.js  # Tailwind configuration
+│   │   └── index.html
+│   ├── package.json
+│   └── tailwind.config.js
 │
 └── README.md
 ```
 
+## Technologies Used
+
+### Backend
+
+- Python
+- FastAPI
+- SQLAlchemy
+- SQLite
+- spaCy
+- WebSockets
+- Brevo API
+- Google Calendar API
+
+### Frontend
+
+- React
+- Tailwind CSS
+- Lucide Icons
+
+### Natural Language Processing
+
+The task parser uses a hybrid NLP approach:
+
+- **spaCy** for identifying the main task action and producing concise task titles.
+- **Regular expressions and deterministic rules** for detecting dates, times, deadlines, priorities, recurrence patterns, reminder intervals, and other structured task information.
+
+The current implementation does not require an external Large Language Model API for task parsing.
+
 ## Installation
 
-### Backend Setup
+### 1. Clone the Repository
 
-1. Navigate to the backend directory:
+```bash
+git clone https://github.com/florentinaiii/Personal-Task-Assistant.git
+cd Personal-Task-Assistant
+```
+
+## Backend Setup
+
+Navigate to the backend directory:
+
 ```bash
 cd backend
 ```
 
-2. Create a virtual environment:
+Create a Python virtual environment:
+
 ```bash
 python -m venv venv
 ```
 
-3. Activate the virtual environment:
-- Windows: `venv\Scripts\activate`
-- macOS/Linux: `source venv/bin/activate`
+Activate the environment.
 
-4. Install dependencies:
+### Windows
+
 ```bash
-pip install -r requirements.txt
+venv\Scripts\activate
 ```
 
-5. Set up Google Calendar (optional):
-   - Go to [Google Cloud Console](https://console.cloud.google.com/)
-   - Create a new project
-   - Enable Google Calendar API
-   - Create OAuth 2.0 credentials
-   - Download `credentials.json` and place it in the backend directory
+### macOS/Linux
 
-### Frontend Setup
+```bash
+source venv/bin/activate
+```
 
-1. Navigate to the frontend directory:
+Install the Python dependencies:
+
+```bash
+python -m pip install -r requirements.txt
+```
+
+Install the required spaCy English model:
+
+```bash
+python -m spacy download en_core_web_sm
+```
+
+## Environment Variables
+
+Create a `.env` file inside the `backend` directory.
+
+For email reminders using Brevo:
+
+```env
+BREVO_API_KEY=your_brevo_api_key
+BREVO_SENDER_EMAIL=your_verified_sender_email
+BREVO_SENDER_NAME=Personal Task Assistant
+```
+
+Do not commit real API keys or credentials to GitHub.
+
+## Google Calendar Setup
+
+Google Calendar integration is optional.
+
+To configure it:
+
+1. Open Google Cloud Console.
+2. Create or select a Google Cloud project.
+3. Enable the Google Calendar API.
+4. Configure OAuth 2.0 credentials.
+5. Download the required credentials file.
+6. Place the credentials in the backend directory according to the application's calendar configuration.
+
+The core task-management functionality can run without Google Calendar credentials.
+
+## Running the Application
+
+### Start the Backend
+
+From the `backend` directory:
+
+```bash
+python -m uvicorn main:app --reload
+```
+
+The backend will normally be available at:
+
+```text
+http://127.0.0.1:8000
+```
+
+FastAPI interactive API documentation can normally be accessed at:
+
+```text
+http://127.0.0.1:8000/docs
+```
+
+### Start the Frontend
+
+Open another terminal and navigate to the frontend directory:
+
 ```bash
 cd frontend
 ```
 
-2. Install dependencies:
+Install the dependencies if they have not already been installed:
+
 ```bash
 npm install
 ```
 
-## Usage
+Start the React development server:
 
-### Starting the Application
-
-1. Start the backend server:
 ```bash
-cd backend
-python main.py
-```
-
-2. Start the frontend development server:
-```bash
-cd frontend
 npm start
 ```
 
-3. Open your browser and navigate to `http://localhost:3000`
+The frontend will normally open at:
 
-### Using the Assistant
+```text
+http://localhost:3000
+```
 
-1. **Chat Interface**: Simply type natural language commands like:
-   - "Remind me to send the project tomorrow"
-   - "I need to finish the report by Friday"
-   - "Schedule a meeting for next week"
+## Using the Assistant
 
-2. **Task Management**: View, edit, and complete tasks in the Tasks tab
+Users can create tasks through conversational commands.
 
-3. **Schedule Planning**: See AI-generated schedule suggestions in the Schedule tab
+Examples:
 
-4. **Productivity Insights**: Track your productivity patterns in the Insights tab
+```text
+I need to buy groceries tomorrow at 6pm
+```
 
-5. **Calendar Sync**: Connect to Google Calendar to sync tasks
+```text
+Remind me to drink tea after 10 minutes
+```
 
-## API Endpoints
+```text
+I need to pray by 8:15pm, remind me
+```
 
-### Tasks
-- `GET /tasks` - Get all tasks
-- `POST /tasks` - Create a new task
-- `GET /tasks/{id}` - Get a specific task
-- `PUT /tasks/{id}` - Update a task
-- `DELETE /tasks/{id}` - Delete a task
+```text
+I need to finish the report tomorrow at 5pm, it is important
+```
 
-### Chat
-- `POST /chat` - Send a message to the AI assistant
+The assistant extracts structured information such as:
 
-### Schedule
-- `GET /schedule` - Get suggested schedule
-- `GET /conflicts` - Get scheduling conflicts
-- `POST /auto-reschedule` - Auto-reschedule tasks
+```text
+Title
+Deadline
+Priority
+Estimated duration
+Reminder
+Recurrence
+Notification type
+```
 
-### Insights
-- `GET /insights` - Get productivity insights
+For example:
 
-### Google Calendar
-- `GET /calendar/status` - Check authentication status
-- `GET /calendar/events` - Get calendar events
-- `POST /calendar/sync` - Sync tasks to calendar
-- `GET /calendar/summary` - Get calendar summary
+```text
+Input:
+I need to pray by 8:15pm, remind me
 
-### WebSocket
-- `WS /ws` - Real-time notifications
+Parsed task:
+Title: Pray
+Deadline: 8:15 PM
+Notification: Email reminder
+```
 
 ## Natural Language Processing
 
-The system can understand various natural language patterns:
+The parser recognizes several types of natural-language information.
 
-**Time expressions:**
-- "tomorrow", "today", "next week", "next month"
-- "in 3 days", "in 2 hours"
-- "by 5pm", "by Friday"
-- "on March 15", "on 15/03/2024"
+### Relative Time
 
-**Priority indicators:**
-- "urgent", "asap", "immediately" → High priority
-- "important", "high", "soon" → Medium priority
-- "low", "later", "sometime" → Low priority
+Examples:
 
-**Duration:**
-- "2 hours", "30 minutes", "1h"
+```text
+in 10 minutes
+after 10 minutes
+in 2 hours
+after 2 hours
+in 3 days
+```
+
+### Dates and Deadlines
+
+Examples:
+
+```text
+today
+tomorrow
+tomorrow at 6pm
+next Monday
+March 15
+15/03/2026
+by 8:15pm
+```
+
+### Priority
+
+Examples:
+
+```text
+urgent
+asap
+immediately
+critical
+very important
+important
+high
+soon
+low
+later
+sometime
+```
+
+These expressions are converted into the application's internal priority levels.
+
+### Recurring Tasks
+
+The system recognizes recurring expressions such as:
+
+```text
+every day
+daily
+each day
+every week
+weekly
+every two weeks
+biweekly
+every month
+monthly
+```
+
+It also supports multiple task times in a single request, for example:
+
+```text
+I need to pray 5 times per day, remind me by 5am, 2:30pm, 6pm, 7:45pm and 10pm
+```
+
+### Reminders
+
+Reminder information can be extracted from expressions such as:
+
+```text
+remind me
+remind me 10 minutes before
+remind me 1 hour before
+remind me at 5pm
+```
+
+Email reminders are associated with the user who created the task.
+
+## Main Application Modules
+
+### Task Parser
+
+`parser.py` converts conversational text into structured task data.
+
+Its responsibilities include:
+
+- Action/title extraction
+- Deadline detection
+- Priority detection
+- Duration extraction
+- Recurrence detection
+- Reminder extraction
+- Multiple-time task processing
+
+### Task Planner
+
+`planner.py` contains the application's scheduling and task-planning logic.
+
+### Notifications
+
+`notifications.py` manages reminder processing and notification logic.
+
+### Email Service
+
+`email_service.py` handles transactional reminder emails through the Brevo API.
+
+### Database
+
+The application uses SQLAlchemy with SQLite for local data persistence.
+
+### Frontend
+
+The React frontend provides the user interface for interacting with the assistant, managing tasks, viewing schedules, and accessing productivity information.
+
+## Deployment
+
+The application can also be deployed as separate backend and frontend services.
+
+When deploying the backend, make sure that:
+
+- All Python dependencies are installed.
+- The spaCy `en_core_web_sm` model is installed.
+- Required environment variables are configured securely.
+- API keys are never stored directly in the repository.
+
+A deployment build command may include:
+
+```bash
+pip install -r requirements.txt && python -m spacy download en_core_web_sm
+```
+
+A production backend start command can use:
+
+```bash
+uvicorn main:app --host 0.0.0.0 --port $PORT
+```
 
 ## Testing
 
-The system is designed for testing with 3-5 users over several days to evaluate:
+The system can be evaluated with multiple users over several days.
+
+Testing can focus on:
+
+- Accuracy of natural-language task recognition
+- Correct extraction of deadlines
+- Correct extraction of priorities
+- Reminder reliability
+- Recurring-task handling
 - Usability of the interface
-- Accuracy of task recognition
-- Effectiveness of prioritization
-- Overall usefulness in daily task management
-
-## Technologies Used
-
-- **Backend**: Python, FastAPI, SQLAlchemy, SQLite
-- **Frontend**: React, Tailwind CSS, Lucide Icons
-- **AI/NLP**: Custom parser with spaCy integration
-- **Real-time**: WebSocket notifications
-- **Calendar**: Google Calendar API
-- **Database**: SQLite (easily upgradeable to PostgreSQL)
+- Scheduling functionality
+- Overall usefulness for daily task management
 
 ## Future Improvements
 
-- Integration with more calendar services (Outlook, Apple Calendar)
-- Mobile app development
-- Advanced AI features using OpenAI GPT
-- Team collaboration features
-- Email integration
-- Voice input support
-- Advanced analytics and reporting
+Possible future improvements include:
+
+- Integration with additional calendar services
+- Mobile application development
+- Large Language Model integration for more advanced conversational understanding
+- Voice input
+- Team collaboration
+- More advanced scheduling algorithms
+- Expanded productivity analytics
+- Additional notification channels
+- PostgreSQL support for larger deployments
+
+## Academic Context
+
+This project was developed as part of a Master's thesis focused on the development of an autonomous artificial-intelligence-based personal assistant for managing daily tasks.
+
+The system explores how Natural Language Processing, automated scheduling, reminders, and adaptive task-management mechanisms can be combined into a practical personal productivity assistant.
 
 ## License
 
-This project is part of a thesis on autonomous AI-based personal assistants for daily task management.
+This project was developed for academic and research purposes.

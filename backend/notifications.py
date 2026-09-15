@@ -2,6 +2,7 @@ import asyncio
 import json
 import logging
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 from typing import List, Dict
 
 from fastapi import WebSocket, WebSocketDisconnect
@@ -10,6 +11,18 @@ from sqlalchemy.orm import Session
 from models import Task
 from email_service import email_service
 from ai_email_generator import ai_email_generator
+
+# Application timezone for Kosovo (CET/CEST).
+APP_TIMEZONE = ZoneInfo("Europe/Belgrade")
+
+
+def local_now() -> datetime:
+    """Return current Kosovo-local time as a naive datetime.
+
+    Task deadlines in the current database are stored without tzinfo, so the
+    timezone is removed only after converting the current time to local time.
+    """
+    return datetime.now(APP_TIMEZONE).replace(tzinfo=None)
 
 
 logging.basicConfig(level=logging.INFO)
@@ -144,7 +157,7 @@ class NotificationManager:
             try:
                 db = db_session_factory()
 
-                now = datetime.now()
+                now = local_now()
 
                 logger.info(
                     f"Running reminder check at {now}"
@@ -304,7 +317,7 @@ class NotificationManager:
                 reminder_type,
                 f"Reminder for {task.title}",
             ),
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": local_now().isoformat(),
         }
 
         await self.broadcast(message)
@@ -358,7 +371,7 @@ class NotificationManager:
             "task_title": task.title,
             "notification_type": notification_type,
             "message": notification_message,
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": local_now().isoformat(),
         }
 
         await self.broadcast(
@@ -384,7 +397,7 @@ class NotificationManager:
             "message":
                 "Your schedule has been updated",
             "timestamp":
-                datetime.now().isoformat(),
+                local_now().isoformat(),
         }
 
         await self.broadcast(message)
@@ -404,7 +417,7 @@ class NotificationManager:
                 f"Scheduling conflicts detected: "
                 f"{len(conflicts)} issues found",
             "timestamp":
-                datetime.now().isoformat(),
+                local_now().isoformat(),
         }
 
         await self.broadcast(message)
@@ -425,7 +438,7 @@ class NotificationManager:
                 f"{len(sync_result.get('synced', []))} "
                 f"tasks synced",
             "timestamp":
-                datetime.now().isoformat(),
+                local_now().isoformat(),
         }
 
         await self.broadcast(message)

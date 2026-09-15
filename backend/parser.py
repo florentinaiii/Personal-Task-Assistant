@@ -1,5 +1,6 @@
 import re
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 from typing import List, Optional
 
 from dateutil import parser as date_parser
@@ -11,6 +12,18 @@ except (ImportError, OSError):
     _NLP = None
 
 from models import TaskCreate
+
+# Application timezone for Kosovo (CET/CEST).
+APP_TIMEZONE = ZoneInfo("Europe/Belgrade")
+
+
+def local_now() -> datetime:
+    """Return current Kosovo-local time as a naive datetime.
+
+    The existing application stores task datetimes without timezone information,
+    so tzinfo is removed only after converting to the correct local timezone.
+    """
+    return datetime.now(APP_TIMEZONE).replace(tzinfo=None)
 
 
 class TaskParser:
@@ -144,7 +157,7 @@ class TaskParser:
                 minutes = int(in_minutes_match.group(1))
 
                 task.deadline = (
-                    datetime.now()
+                    local_now()
                     + timedelta(minutes=minutes)
                 )
 
@@ -415,7 +428,7 @@ class TaskParser:
             original_text
         )
 
-        now = datetime.now()
+        now = local_now()
 
         tasks: List[TaskCreate] = []
 
@@ -487,7 +500,7 @@ class TaskParser:
         if not template:
             return []
 
-        now = datetime.now()
+        now = local_now()
 
         time_match = re.search(
             r"\b(1[0-2]|0?[1-9])"
@@ -657,7 +670,7 @@ class TaskParser:
             )
 
             deadline = (
-                datetime.now()
+                local_now()
                 + timedelta(minutes=minutes)
             )
 
@@ -762,7 +775,7 @@ class TaskParser:
             is_recurring
             and (
                 deadline is None
-                or deadline <= datetime.now()
+                or deadline <= local_now()
             )
         ):
             deadline = (
@@ -829,7 +842,7 @@ class TaskParser:
         text: str,
     ) -> Optional[datetime]:
 
-        now = datetime.now()
+        now = local_now()
 
         def extract_explicit_time(value: str):
             match = re.search(
@@ -1095,7 +1108,7 @@ class TaskParser:
         parsed_deadline: Optional[datetime] = None,
     ) -> datetime:
 
-        now = datetime.now()
+        now = local_now()
 
         time_match = re.search(
             r"\b(1[0-2]|0?[1-9])"
@@ -1685,7 +1698,7 @@ class TaskParser:
             self.normalize_text(text)
         )
 
-        now = datetime.now()
+        now = local_now()
 
         # N minutes before
         match = re.search(

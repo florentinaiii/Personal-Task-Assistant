@@ -1,90 +1,111 @@
 import os
-import smtplib
 import logging
-from typing import Optional
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
+import resend
 from dotenv import load_dotenv
+
 load_dotenv()
 
 logger = logging.getLogger(__name__)
 
 
 class EmailService:
-    def __init__(self, smtp_server: str = "smtp.gmail.com", smtp_port: int = 587):
-        self.smtp_server = smtp_server
-        self.smtp_port = smtp_port
-        self.sender_email = os.getenv("GMAIL_EMAIL")
-        self.sender_password = os.getenv("GMAIL_APP_PASSWORD")
+    def __init__(self):
+        self.api_key = os.getenv("RESEND_API_KEY")
+
+        # Resend test sender
+        self.sender_email = os.getenv(
+            "RESEND_FROM_EMAIL",
+            "onboarding@resend.dev"
+        )
+
+        if self.api_key:
+            resend.api_key = self.api_key
 
 
-        
-    def send_email(self, recipient_email: str, subject: str, body: str) -> bool:
-        """Send an email using Gmail SMTP"""
+    def send_email(
+        self,
+        recipient_email: str,
+        subject: str,
+        body: str
+    ) -> bool:
+        """Send an email using Resend API."""
+
         try:
-            print("Sender email:", self.sender_email)
-            print("Password exists:", bool(self.sender_password))
-            print("Recipient email:", recipient_email)
+            logger.info(
+                f"Attempting Resend email | "
+                f"recipient='{recipient_email}' | "
+                f"sender='{self.sender_email}'"
+            )
 
-            if not self.sender_email or not self.sender_password:
-                logger.error("Gmail credentials are not configured")
+            # Check API key
+            if not self.api_key:
+                logger.error(
+                    "RESEND_API_KEY is not configured."
+                )
                 return False
 
+            # Check recipient
             if not recipient_email or "@" not in recipient_email:
-                logger.error("Recipient email is missing or invalid")
+                logger.error(
+                    f"Recipient email is missing or invalid: "
+                    f"{recipient_email}"
+                )
                 return False
 
+            # Default subject
             if not subject:
                 subject = "Reminder"
 
+            # Default body
             if not body:
                 body = "This is your reminder."
 
-            message = MIMEMultipart()
-            message["From"] = self.sender_email
-            message["To"] = recipient_email
-            message["Subject"] = subject
-            message.attach(MIMEText(body, "plain", "utf-8"))
+            params = {
+                "from": f"Personal Task Assistant <{self.sender_email}>",
+                "to": [recipient_email],
+                "subject": subject,
+                "text": body,
+            }
 
-            with smtplib.SMTP(self.smtp_server, self.smtp_port) as server:
-                server.ehlo()
-                server.starttls()
-                server.ehlo()
-                server.login(self.sender_email, self.sender_password)
-                server.sendmail(
-                    self.sender_email,
-                    recipient_email,
-                    message.as_string()
-                )
+            response = resend.Emails.send(params)
 
-            print("Email was sent successfully.")
-            logger.info(f"Email sent successfully to {recipient_email}")
+            logger.info(
+                f"Email sent successfully with Resend | "
+                f"recipient='{recipient_email}' | "
+                f"response='{response}'"
+            )
+
             return True
 
         except Exception as e:
-            print("Email sending error:", str(e))
-            logger.error(f"Failed to send email to {recipient_email}: {e}")
+            logger.exception(
+                f"Failed to send email with Resend | "
+                f"recipient='{recipient_email}' | "
+                f"error='{e}'"
+            )
+
             return False
+
 
     def test_connection(self) -> bool:
-        """Test email service connection"""
-        try:
-            if not self.sender_email or not self.sender_password:
-                logger.error("Gmail credentials are not configured")
-                return False
+        """
+        Check whether Resend API configuration exists.
 
-            with smtplib.SMTP(self.smtp_server, self.smtp_port) as server:
-                server.ehlo()
-                server.starttls()
-                server.ehlo()
-                server.login(self.sender_email, self.sender_password)
+        Unlike SMTP, Resend does not require opening a persistent
+        connection to an email server.
+        """
 
-            logger.info("Email service connection test successful")
-            return True
-
-        except Exception as e:
-            logger.error(f"Email service connection test failed: {e}")
+        if not self.api_key:
+            logger.error(
+                "RESEND_API_KEY is not configured."
+            )
             return False
+
+        logger.info(
+            "Resend API key is configured."
+        )
+
+        return True
 
 
 email_service = EmailService()

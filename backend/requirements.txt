@@ -12,3 +12,4 @@ python-dotenv>=1.0.0
 spacy>=3.8.0
 tzdata
 sib-api-v3-sdk
+psycopg[binary]>=3.2

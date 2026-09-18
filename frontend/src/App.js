@@ -212,12 +212,19 @@ function App() {
 
     setLoading(true);
     try {
-      console.log('Sending request to /meeting/best');
-      const response = await axios.post('/meeting/best', {
-        title: meetingTitle,
-        duration_hours: Number(meetingDuration),
-        urgency: meetingUrgency,
-      });
+      const response = await axios.post(
+        '/meeting/best',
+        {
+          title: meetingTitle,
+          duration_hours: Number(meetingDuration),
+          urgency: meetingUrgency,
+        },
+        {
+          params: {
+            user_email: user.email,
+          },
+        }
+      );
       console.log('Response received:', response.data);
       setMeetingSuggestions(response.data);
     } catch (error) {

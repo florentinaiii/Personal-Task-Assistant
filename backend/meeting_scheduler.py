@@ -37,6 +37,7 @@ class MeetingScheduler:
         preferred_time_start: int = None,
         preferred_time_end: int = None,
         days_ahead: int = 14,
+        task_intervals: List[tuple] = None,
     ) -> Dict:
         """
         Suggest optimal meeting times based on:
@@ -48,6 +49,9 @@ class MeetingScheduler:
 
         if participants is None:
             participants = []
+
+        if task_intervals is None:
+            task_intervals = []
 
         if preferred_days is None:
             preferred_days = [0, 1, 2, 3, 4]
@@ -88,6 +92,7 @@ class MeetingScheduler:
                 duration_hours=duration_hours,
                 preferred_start=preferred_time_start,
                 preferred_end=preferred_time_end,
+                task_intervals=task_intervals,
             )
 
             for slot in available_slots:
@@ -136,6 +141,7 @@ class MeetingScheduler:
         duration_hours: float,
         preferred_start: int = None,
         preferred_end: int = None,
+        task_intervals: List[tuple] = None,
     ) -> List[datetime]:
         """
         Find available meeting slots.
@@ -150,6 +156,9 @@ class MeetingScheduler:
         """
 
         available_slots = []
+
+        if task_intervals is None:
+            task_intervals = []
 
         duration_hours = float(duration_hours)
 
@@ -280,6 +289,20 @@ class MeetingScheduler:
                     f"events: {e}"
                 )
 
+        # Add active task intervals from the application's database.
+        # These are supplied by main.py for the currently logged-in user.
+        for task_start, task_end in task_intervals:
+            if task_start is None:
+                continue
+
+            if task_end is None:
+                task_end = task_start + timedelta(hours=1)
+
+            if task_start.date() == date.date():
+                existing_events.append(
+                    (task_start, task_end)
+                )
+
         existing_events.sort(
             key=lambda event: event[0]
         )
@@ -401,6 +424,7 @@ class MeetingScheduler:
         duration_hours: float = 1.0,
         participants: List[str] = None,
         urgency: str = "normal",
+        task_intervals: List[tuple] = None,
     ) -> Dict:
         """
         Find the single best meeting time.
@@ -457,6 +481,7 @@ class MeetingScheduler:
             participants=participants,
             preferred_days=preferred_days,
             days_ahead=days_ahead,
+            task_intervals=task_intervals,
         )
 
         # -----------------------------------------------------

@@ -1,5 +1,6 @@
 import re
-from datetime import datetime
+from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 from typing import List, Optional
 from contextlib import asynccontextmanager
 
@@ -151,6 +152,35 @@ def get_user_or_404(
 
 
 # ============================================================
+# TASK CONFLICT HELPER
+# ============================================================
+
+def find_task_time_conflict(
+    db: Session,
+    user_id: int,
+    deadline: Optional[datetime],
+    exclude_task_id: Optional[int] = None,
+) -> Optional[Task]:
+    """Return an existing active task at the exact same deadline, if any."""
+    if deadline is None:
+        return None
+
+    query = (
+        db.query(Task)
+        .filter(
+            Task.user_id == user_id,
+            Task.deadline == deadline,
+            Task.status != "completed",
+        )
+    )
+
+    if exclude_task_id is not None:
+        query = query.filter(Task.id != exclude_task_id)
+
+    return query.first()
+
+
+# ============================================================
 # TASKS
 # ============================================================
 
@@ -173,6 +203,25 @@ async def create_task(
         db,
         user_email,
     )
+
+    conflicting_task = find_task_time_conflict(
+        db,
+        user.id,
+        task.deadline,
+    )
+
+    if conflicting_task:
+        conflict_time = conflicting_task.deadline.strftime(
+            "%B %d at %I:%M %p"
+        )
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"Scheduling conflict detected. You already have "
+                f"'{conflicting_task.title}' scheduled for {conflict_time}. "
+                "Please choose another time."
+            ),
+        )
 
     db_task = Task(
         title=task.title,
@@ -365,8 +414,42 @@ async def chat_with_assistant(
 
     created_tasks = []
     updated_tasks = []
+    conflict_messages = []
+    pending_deadlines = {}
 
     for task_data in parsed_tasks:
+        conflicting_task = find_task_time_conflict(
+            db,
+            user.id,
+            task_data.deadline,
+        )
+
+        # Also catch two tasks from the same chat request that have the
+        # exact same deadline before either one has been committed.
+        pending_conflict_title = None
+        if task_data.deadline is not None:
+            pending_conflict_title = pending_deadlines.get(
+                task_data.deadline
+            )
+
+        if conflicting_task or pending_conflict_title:
+            existing_title = (
+                conflicting_task.title
+                if conflicting_task
+                else pending_conflict_title
+            )
+
+            conflict_time = task_data.deadline.strftime(
+                "%B %d at %I:%M %p"
+            )
+
+            conflict_messages.append(
+                f"Scheduling conflict detected. You already have "
+                f"'{existing_title}' scheduled for {conflict_time}. "
+                "Please choose another time."
+            )
+            continue
+
         db_task = Task(
             title=task_data.title,
             description=task_data.description,
@@ -396,16 +479,34 @@ async def chat_with_assistant(
         db.add(db_task)
         created_tasks.append(db_task)
 
+        if task_data.deadline is not None:
+            pending_deadlines[task_data.deadline] = task_data.title
+
     db.commit()
 
     for db_task in created_tasks:
         db.refresh(db_task)
 
-    response_text = generate_ai_response(
-        message.message,
-        created_tasks,
-        message.user_email,
-    )
+    if conflict_messages:
+        if created_tasks:
+            normal_response = generate_ai_response(
+                message.message,
+                created_tasks,
+                message.user_email,
+            )
+            response_text = (
+                normal_response
+                + " "
+                + " ".join(conflict_messages)
+            )
+        else:
+            response_text = " ".join(conflict_messages)
+    else:
+        response_text = generate_ai_response(
+            message.message,
+            created_tasks,
+            message.user_email,
+        )
 
     return ChatResponse(
         response=response_text,
@@ -477,7 +578,9 @@ def generate_ai_response(
                 ):
                     hour = 0
 
-                now = datetime.now()
+                now = datetime.now(
+                    ZoneInfo("Europe/Belgrade")
+                ).replace(tzinfo=None)
 
                 requested_time = now.replace(
                     hour=hour,
@@ -936,10 +1039,63 @@ async def complete_recurring_task(
 # MEETING SCHEDULER
 # ============================================================
 
+def get_user_task_intervals(
+    db: Session,
+    user_email: Optional[str],
+) -> List[tuple]:
+    """Return occupied intervals for active tasks belonging to one user."""
+    if not user_email:
+        return []
+
+    user = (
+        db.query(User)
+        .filter(User.email == user_email)
+        .first()
+    )
+
+    if not user:
+        return []
+
+    tasks = (
+        db.query(Task)
+        .filter(
+            Task.user_id == user.id,
+            Task.deadline.isnot(None),
+            Task.status != "completed",
+        )
+        .all()
+    )
+
+    intervals = []
+
+    for task in tasks:
+        start = task.deadline
+
+        # A task without an estimated duration blocks one hour by default.
+        duration_hours = task.estimated_duration or 1.0
+
+        try:
+            duration_hours = float(duration_hours)
+        except (TypeError, ValueError):
+            duration_hours = 1.0
+
+        end = start + timedelta(hours=duration_hours)
+        intervals.append((start, end))
+
+    return intervals
+
+
 @app.post("/meeting/suggest")
 async def suggest_meeting_times(
     request: MeetingRequest,
+    user_email: Optional[str] = None,
+    db: Session = Depends(get_db),
 ):
+    task_intervals = get_user_task_intervals(
+        db,
+        user_email,
+    )
+
     result = (
         meeting_scheduler
         .suggest_meeting_times(
@@ -950,6 +1106,7 @@ async def suggest_meeting_times(
             preferred_time_start=request.preferred_time_start,
             preferred_time_end=request.preferred_time_end,
             days_ahead=request.days_ahead,
+            task_intervals=task_intervals,
         )
     )
 
@@ -959,7 +1116,14 @@ async def suggest_meeting_times(
 @app.post("/meeting/best")
 async def find_best_meeting_time(
     request: MeetingRequest,
+    user_email: Optional[str] = None,
+    db: Session = Depends(get_db),
 ):
+    task_intervals = get_user_task_intervals(
+        db,
+        user_email,
+    )
+
     result = (
         meeting_scheduler
         .find_best_meeting_time(
@@ -967,6 +1131,7 @@ async def find_best_meeting_time(
             duration_hours=request.duration_hours,
             participants=request.participants,
             urgency=request.urgency,
+            task_intervals=task_intervals,
         )
     )
 

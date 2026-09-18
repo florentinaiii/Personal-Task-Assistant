@@ -1550,6 +1550,15 @@ class TaskParser:
         ]:
             cleaned = re.sub(pattern, "", cleaned, flags=re.IGNORECASE).strip()
 
+        # Remove a conversational first-person subject left after recurrence cleanup.
+        # Example: "I need to review my notes every week" -> "Review my notes".
+        cleaned = re.sub(
+            r"^\s*i\s+(?=[a-z])",
+            "",
+            cleaned,
+            flags=re.IGNORECASE,
+        ).strip()
+
         reminder_patterns = [
             # General trailing reminder instruction:
             # "I need to pray by 8:15pm, remind me" -> "Pray"

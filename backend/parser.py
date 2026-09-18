@@ -80,7 +80,6 @@ class TaskParser:
             "tody": "today",
             "oclock": "o'clock",
             "minitues": "minutes",
-            "meet": "meeting",
         }
 
     # =========================================================
@@ -1010,6 +1009,60 @@ class TaskParser:
             )
 
         # -----------------------------------------------------
+        # EXPLICIT CALENDAR DATE + OPTIONAL TIME
+        # -----------------------------------------------------
+        # Must run before the generic time-only branch.
+        month_lookup = {
+            "january": 1, "jan": 1, "february": 2, "feb": 2,
+            "march": 3, "mar": 3, "april": 4, "apr": 4, "may": 5,
+            "june": 6, "jun": 6, "july": 7, "jul": 7,
+            "august": 8, "aug": 8, "september": 9, "sep": 9, "sept": 9,
+            "october": 10, "oct": 10, "november": 11, "nov": 11,
+            "december": 12, "dec": 12,
+        }
+        month_word = (
+            r"january|february|march|april|may|june|july|august|"
+            r"september|october|november|december|jan|feb|mar|apr|"
+            r"jun|jul|aug|sep|sept|oct|nov|dec"
+        )
+        date_match = re.search(
+            rf"\b(\d{{1,2}})(?:st|nd|rd|th)?\s+({month_word})(?:\s+(\d{{4}}))?\b",
+            text, re.IGNORECASE,
+        )
+        if date_match:
+            day = int(date_match.group(1))
+            month = month_lookup[date_match.group(2).lower()]
+            year = int(date_match.group(3)) if date_match.group(3) else now.year
+            try:
+                hour, minute = explicit_time if explicit_time else (23, 59)
+                candidate = datetime(year, month, day, hour, minute)
+                if date_match.group(3) is None and candidate <= now:
+                    candidate = candidate.replace(year=year + 1)
+                return candidate
+            except ValueError:
+                return None
+
+        numeric_date_match = re.search(
+            r"\b(\d{1,2})[./-](\d{1,2})(?:[./-](\d{2,4}))?\b",
+            text, re.IGNORECASE,
+        )
+        if numeric_date_match:
+            day = int(numeric_date_match.group(1))
+            month = int(numeric_date_match.group(2))
+            year_text = numeric_date_match.group(3)
+            year = int(year_text) if year_text else now.year
+            if year_text and year < 100:
+                year += 2000
+            try:
+                hour, minute = explicit_time if explicit_time else (23, 59)
+                candidate = datetime(year, month, day, hour, minute)
+                if year_text is None and candidate <= now:
+                    candidate = candidate.replace(year=year + 1)
+                return candidate
+            except ValueError:
+                return None
+
+        # -----------------------------------------------------
         # EXPLICIT TIME WITHOUT "TODAY"
         # -----------------------------------------------------
 
@@ -1489,6 +1542,14 @@ class TaskParser:
         for pattern in recurring_cleanup_patterns:
             cleaned = re.sub(pattern, " ", cleaned, flags=re.IGNORECASE)
 
+        # Recurrence cleanup can expose a leading instruction phrase.
+        for pattern in [
+            r"^\s*i\s+need\s+to\s+", r"^\s*need\s+to\s+",
+            r"^\s*i\s+have\s+to\s+", r"^\s*have\s+to\s+",
+            r"^\s*i\s+should\s+", r"^\s*should\s+",
+        ]:
+            cleaned = re.sub(pattern, "", cleaned, flags=re.IGNORECASE).strip()
+
         reminder_patterns = [
             # General trailing reminder instruction:
             # "I need to pray by 8:15pm, remind me" -> "Pray"
@@ -1537,12 +1598,12 @@ class TaskParser:
         )
 
         explicit_date_patterns = [
-            rf"\bon\s+{month_names}\s+\d{{1,2}}(?:st|nd|rd|th)?\b",
+            rf"\b(?:on|for)\s+{month_names}\s+\d{{1,2}}(?:st|nd|rd|th)?\b",
             rf"\b{month_names}\s+\d{{1,2}}(?:st|nd|rd|th)?\b",
-            r"\bon\s+\d{1,2}/\d{1,2}/\d{2,4}\b",
-            r"\b\d{1,2}/\d{1,2}/\d{2,4}\b",
-            r"\bon\s+\d{1,2}-\d{1,2}-\d{2,4}\b",
-            r"\b\d{1,2}-\d{1,2}-\d{2,4}\b",
+            rf"\b(?:on|for)\s+\d{{1,2}}(?:st|nd|rd|th)?\s+{month_names}\b",
+            rf"\b\d{{1,2}}(?:st|nd|rd|th)?\s+{month_names}\b",
+            r"\b(?:on|for)\s+\d{1,2}[./-]\d{1,2}(?:[./-]\d{2,4})?\b",
+            r"\b\d{1,2}[./-]\d{1,2}(?:[./-]\d{2,4})?\b",
         ]
 
         for pattern in explicit_date_patterns:
@@ -1620,16 +1681,24 @@ class TaskParser:
             else:
                 cleaned = f"Meeting with {participant}"
         else:
-            appointment_match = re.fullmatch(
-                r"(?:schedule|arrange|set\s+up|book)\s+"
-                r"(?:a\s+|an\s+|the\s+)?"
-                r"(.+?\s+appointment)",
+            simple_meeting_match = re.fullmatch(
+                r"(?:schedule|arrange|set\s+up|plan|book)\s+"
+                r"(?:a\s+|an\s+|the\s+)?(meet|meeting|call)",
                 cleaned,
                 flags=re.IGNORECASE,
             )
-
-            if appointment_match:
-                cleaned = appointment_match.group(1).strip()
+            if simple_meeting_match:
+                cleaned = simple_meeting_match.group(1)
+            else:
+                appointment_match = re.fullmatch(
+                    r"(?:schedule|arrange|set\s+up|book)\s+"
+                    r"(?:a\s+|an\s+|the\s+)?"
+                    r"(.+?\s+appointment)",
+                    cleaned,
+                    flags=re.IGNORECASE,
+                )
+                if appointment_match:
+                    cleaned = appointment_match.group(1).strip()
 
         cleaned = re.sub(r"\s+", " ", cleaned).strip(" ,.-?!:;")
 

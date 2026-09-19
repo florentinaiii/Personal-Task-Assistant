@@ -23,6 +23,7 @@ from models import (
 
 from db import get_db, create_tables, SessionLocal
 from parser import TaskParser
+from llm_parser import LLMTaskParser
 from planner import TaskPlanner
 from calendar_integration import GoogleCalendarIntegration
 from notifications import notification_manager, websocket_endpoint
@@ -31,6 +32,7 @@ from meeting_scheduler import meeting_scheduler
 
 
 task_parser = TaskParser()
+llm_task_parser = LLMTaskParser()
 task_planner = TaskPlanner()
 calendar_integration = GoogleCalendarIntegration()
 
@@ -407,8 +409,9 @@ async def chat_with_assistant(
     )
 
     parsed_tasks = (
-        task_parser.parse_task_from_text(
-            message.message
+        llm_task_parser.parse_task_from_text(
+            message.message,
+            message.user_email,
         )
     )
 

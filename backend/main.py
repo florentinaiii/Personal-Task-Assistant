@@ -16,8 +16,9 @@ from models import (
     ChatMessage,
     ChatResponse,
     User,
-    UserLoginRequest,
+    UserAuthRequest,
     UserResponse,
+    AuthResponse,
     MeetingRequest,
 )
 
@@ -29,6 +30,14 @@ from calendar_integration import GoogleCalendarIntegration
 from notifications import notification_manager, websocket_endpoint
 from recurring_tasks import recurring_task_manager
 from meeting_scheduler import meeting_scheduler
+from auth import (
+    create_access_token,
+    get_current_user,
+    hash_password,
+    normalize_email,
+    validate_password,
+    verify_password,
+)
 
 
 task_parser = TaskParser()
@@ -81,76 +90,77 @@ app.add_middleware(
 
 
 # ============================================================
-# LOGIN
+# AUTHENTICATION
 # ============================================================
 
-@app.post(
-    "/login",
-    response_model=UserResponse,
-)
-async def login(
-    user_request: UserLoginRequest,
+@app.post("/register", response_model=AuthResponse)
+async def register(
+    user_request: UserAuthRequest,
     db: Session = Depends(get_db),
 ):
-    user = (
-        db.query(User)
-        .filter(User.email == user_request.email)
-        .first()
-    )
+    email = normalize_email(user_request.email)
+    validate_password(user_request.password)
 
-    if user:
-        return user
+    user = db.query(User).filter(User.email == email).first()
 
-    new_user = User(
-        email=user_request.email
-    )
-
-    db.add(new_user)
-    db.commit()
-    db.refresh(new_user)
-
-    return new_user
-
-
-def get_or_create_user(
-    db: Session,
-    email: str,
-) -> User:
-    user = (
-        db.query(User)
-        .filter(User.email == email)
-        .first()
-    )
-
-    if not user:
-        user = User(
-            email=email
+    if user and user.password_hash:
+        raise HTTPException(
+            status_code=409,
+            detail="An account with this email already exists.",
         )
 
+    if user:
+        # Legacy account created before password authentication was introduced.
+        user.password_hash = hash_password(user_request.password)
+    else:
+        user = User(
+            email=email,
+            password_hash=hash_password(user_request.password),
+        )
         db.add(user)
-        db.commit()
-        db.refresh(user)
 
-    return user
+    db.commit()
+    db.refresh(user)
 
-
-def get_user_or_404(
-    db: Session,
-    email: str,
-) -> User:
-    user = (
-        db.query(User)
-        .filter(User.email == email)
-        .first()
+    return AuthResponse(
+        access_token=create_access_token(user),
+        user=user,
     )
+
+
+@app.post("/login", response_model=AuthResponse)
+async def login(
+    user_request: UserAuthRequest,
+    db: Session = Depends(get_db),
+):
+    email = normalize_email(user_request.email)
+    user = db.query(User).filter(User.email == email).first()
 
     if not user:
         raise HTTPException(
-            status_code=404,
-            detail="User not found",
+            status_code=401,
+            detail="Invalid email or password.",
         )
 
-    return user
+    if not user.password_hash:
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                "This is an existing account from the previous version. "
+                "Choose Create account once to set a password."
+            ),
+        )
+
+    if not verify_password(user_request.password, user.password_hash):
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid email or password.",
+        )
+
+    return AuthResponse(
+        access_token=create_access_token(user),
+        user=user,
+    )
 
 
 # ============================================================
@@ -186,29 +196,35 @@ def find_task_time_conflict(
 # TASKS
 # ============================================================
 
-@app.post(
-    "/tasks",
-    response_model=TaskResponse,
-)
-async def create_task(
-    task: TaskCreate,
-    user_email: Optional[str] = None,
-    db: Session = Depends(get_db),
-):
-    if not user_email:
-        raise HTTPException(
-            status_code=400,
-            detail="user_email is required",
+def get_owned_task_or_404(
+    db: Session,
+    task_id: int,
+    current_user: User,
+) -> Task:
+    task = (
+        db.query(Task)
+        .filter(
+            Task.id == task_id,
+            Task.user_id == current_user.id,
         )
-
-    user = get_or_create_user(
-        db,
-        user_email,
+        .first()
     )
 
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    return task
+
+
+@app.post("/tasks", response_model=TaskResponse)
+async def create_task(
+    task: TaskCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     conflicting_task = find_task_time_conflict(
         db,
-        user.id,
+        current_user.id,
         task.deadline,
     )
 
@@ -236,7 +252,7 @@ async def create_task(
         recipient_email=task.recipient_email,
         reminder_minutes_before=task.reminder_minutes_before,
         email_sent=False,
-        user_id=user.id,
+        user_id=current_user.id,
         is_recurring=task.is_recurring or False,
         recurring_pattern=task.recurring_pattern,
     )
@@ -245,112 +261,66 @@ async def create_task(
     db.commit()
     db.refresh(db_task)
 
-    await notification_manager.send_task_notification(
-        db_task,
-        "created",
-    )
-
+    await notification_manager.send_task_notification(db_task, "created")
     return db_task
 
 
-@app.get(
-    "/tasks",
-    response_model=List[TaskResponse],
-)
+@app.get("/tasks", response_model=List[TaskResponse])
 async def get_tasks(
-    user_email: Optional[str] = None,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
-    if user_email:
-        user = (
-            db.query(User)
-            .filter(User.email == user_email)
-            .first()
-        )
-
-        if not user:
-            return []
-
-        return (
-            db.query(Task)
-            .filter(Task.user_id == user.id)
-            .all()
-        )
-
-    return db.query(Task).all()
+    return (
+        db.query(Task)
+        .filter(Task.user_id == current_user.id)
+        .all()
+    )
 
 
-@app.get(
-    "/tasks/{task_id}",
-    response_model=TaskResponse,
-)
+@app.get("/tasks/{task_id}", response_model=TaskResponse)
 async def get_task(
     task_id: int,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
-    task = (
-        db.query(Task)
-        .filter(Task.id == task_id)
-        .first()
-    )
-
-    if not task:
-        raise HTTPException(
-            status_code=404,
-            detail="Task not found",
-        )
-
-    return task
+    return get_owned_task_or_404(db, task_id, current_user)
 
 
-@app.put(
-    "/tasks/{task_id}",
-    response_model=TaskResponse,
-)
+@app.put("/tasks/{task_id}", response_model=TaskResponse)
 async def update_task(
     task_id: int,
     task_update: TaskUpdate,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
-    task = (
-        db.query(Task)
-        .filter(Task.id == task_id)
-        .first()
-    )
+    task = get_owned_task_or_404(db, task_id, current_user)
 
-    if not task:
-        raise HTTPException(
-            status_code=404,
-            detail="Task not found",
+    update_data = task_update.model_dump(exclude_unset=True)
+
+    if "deadline" in update_data:
+        conflict = find_task_time_conflict(
+            db,
+            current_user.id,
+            update_data["deadline"],
+            exclude_task_id=task.id,
         )
-
-    update_data = task_update.dict(
-        exclude_unset=True
-    )
+        if conflict:
+            raise HTTPException(
+                status_code=409,
+                detail="Scheduling conflict detected. Please choose another time.",
+            )
 
     for field, value in update_data.items():
-        setattr(
-            task,
-            field,
-            value,
-        )
+        setattr(task, field, value)
 
     task.updated_at = datetime.now()
-
     db.commit()
     db.refresh(task)
 
     if task_update.status == "completed":
-        await notification_manager.send_task_notification(
-            task,
-            "completed",
-        )
-
+        await notification_manager.send_task_notification(task, "completed")
     else:
-        await notification_manager.send_task_notification(
-            task,
-            "updated",
-        )
+        await notification_manager.send_task_notification(task, "updated")
 
     return task
 
@@ -359,30 +329,15 @@ async def update_task(
 async def delete_task(
     task_id: int,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
-    task = (
-        db.query(Task)
-        .filter(Task.id == task_id)
-        .first()
-    )
+    task = get_owned_task_or_404(db, task_id, current_user)
 
-    if not task:
-        raise HTTPException(
-            status_code=404,
-            detail="Task not found",
-        )
-
-    await notification_manager.send_task_notification(
-        task,
-        "deleted",
-    )
-
+    await notification_manager.send_task_notification(task, "deleted")
     db.delete(task)
     db.commit()
 
-    return {
-        "message": "Task deleted successfully"
-    }
+    return {"message": "Task deleted successfully"}
 
 
 # ============================================================
@@ -396,22 +351,14 @@ async def delete_task(
 async def chat_with_assistant(
     message: ChatMessage,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
-    if not message.user_email:
-        raise HTTPException(
-            status_code=400,
-            detail="user_email is required",
-        )
-
-    user = get_or_create_user(
-        db,
-        message.user_email,
-    )
+    user = current_user
 
     parsed_tasks = (
         llm_task_parser.parse_task_from_text(
             message.message,
-            message.user_email,
+            current_user.email,
         )
     )
 
@@ -495,7 +442,7 @@ async def chat_with_assistant(
             normal_response = generate_ai_response(
                 message.message,
                 created_tasks,
-                message.user_email,
+                current_user.email,
             )
             response_text = (
                 normal_response
@@ -508,7 +455,7 @@ async def chat_with_assistant(
         response_text = generate_ai_response(
             message.message,
             created_tasks,
-            message.user_email,
+            current_user.email,
         )
 
     return ChatResponse(
@@ -871,28 +818,21 @@ def generate_ai_response(
 # SCHEDULE
 # ============================================================
 
+def get_current_user_tasks(db: Session, current_user: User) -> List[Task]:
+    return (
+        db.query(Task)
+        .filter(Task.user_id == current_user.id)
+        .all()
+    )
+
+
 @app.get("/schedule")
 async def get_schedule(
-    user_email: Optional[str] = None,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
-    if user_email:
-        user = get_user_or_404(
-            db,
-            user_email,
-        )
-
-        tasks = (
-            db.query(Task)
-            .filter(Task.user_id == user.id)
-            .all()
-        )
-
-    else:
-        tasks = db.query(Task).all()
-
     return task_planner.suggest_schedule(
-        tasks
+        get_current_user_tasks(db, current_user)
     )
 
 
@@ -902,26 +842,11 @@ async def get_schedule(
 
 @app.get("/conflicts")
 async def get_conflicts(
-    user_email: Optional[str] = None,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
-    if user_email:
-        user = get_user_or_404(
-            db,
-            user_email,
-        )
-
-        tasks = (
-            db.query(Task)
-            .filter(Task.user_id == user.id)
-            .all()
-        )
-
-    else:
-        tasks = db.query(Task).all()
-
     return task_planner.detect_conflicts(
-        tasks
+        get_current_user_tasks(db, current_user)
     )
 
 
@@ -931,52 +856,22 @@ async def get_conflicts(
 
 @app.post("/auto-reschedule")
 async def auto_reschedule(
-    user_email: Optional[str] = None,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
-    if user_email:
-        user = get_user_or_404(
-            db,
-            user_email,
-        )
-
-        tasks = (
-            db.query(Task)
-            .filter(Task.user_id == user.id)
-            .all()
-        )
-
-    else:
-        tasks = db.query(Task).all()
-
-    conflicts = (
-        task_planner.detect_conflicts(
-            tasks
-        )
-    )
-
+    tasks = get_current_user_tasks(db, current_user)
+    conflicts = task_planner.detect_conflicts(tasks)
     updated_tasks = []
 
     for conflict in conflicts:
         if conflict["type"] == "overload":
-            rescheduled = (
-                task_planner.auto_reschedule(
-                    tasks,
-                    conflict,
-                )
-            )
-
-            updated_tasks.extend(
-                rescheduled
-            )
+            rescheduled = task_planner.auto_reschedule(tasks, conflict)
+            updated_tasks.extend(rescheduled)
 
     db.commit()
 
     return {
-        "message": (
-            f"Rescheduled "
-            f"{len(updated_tasks)} tasks"
-        ),
+        "message": f"Rescheduled {len(updated_tasks)} tasks",
         "updated_tasks": updated_tasks,
     }
 
@@ -987,29 +882,11 @@ async def auto_reschedule(
 
 @app.get("/insights")
 async def get_insights(
-    user_email: Optional[str] = None,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
-    if user_email:
-        user = get_user_or_404(
-            db,
-            user_email,
-        )
-
-        tasks = (
-            db.query(Task)
-            .filter(Task.user_id == user.id)
-            .all()
-        )
-
-    else:
-        tasks = db.query(Task).all()
-
-    return (
-        task_planner
-        .get_productivity_insights(
-            tasks
-        )
+    return task_planner.get_productivity_insights(
+        get_current_user_tasks(db, current_user)
     )
 
 
@@ -1063,68 +940,34 @@ async def get_calendar_events(
 
 @app.post("/calendar/sync")
 async def sync_tasks_to_calendar(
-    user_email: Optional[str] = None,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     if not calendar_integration.is_authenticated():
-        return {
-            "error":
-                "Not authenticated with Google Calendar"
-        }
+        return {"error": "Not authenticated with Google Calendar"}
 
-    if user_email:
-        user = get_user_or_404(
-            db,
-            user_email,
+    tasks = (
+        db.query(Task)
+        .filter(
+            Task.user_id == current_user.id,
+            Task.deadline.isnot(None),
+            Task.status != "completed",
         )
-
-        tasks = (
-            db.query(Task)
-            .filter(
-                Task.user_id == user.id,
-                Task.deadline.isnot(None),
-                Task.status != "completed",
-            )
-            .all()
-        )
-
-    else:
-        tasks = (
-            db.query(Task)
-            .filter(
-                Task.deadline.isnot(None),
-                Task.status != "completed",
-            )
-            .all()
-        )
+        .all()
+    )
 
     task_dicts = [
         {
             "id": task.id,
             "title": task.title,
-            "description": (
-                task.description
-                or ""
-            ),
-            "deadline": (
-                task.deadline.isoformat()
-                if task.deadline
-                else None
-            ),
-            "estimated_duration": (
-                task.estimated_duration
-                or 1.0
-            ),
+            "description": task.description or "",
+            "deadline": task.deadline.isoformat() if task.deadline else None,
+            "estimated_duration": task.estimated_duration or 1.0,
         }
         for task in tasks
     ]
 
-    return (
-        calendar_integration
-        .sync_tasks_to_calendar(
-            task_dicts
-        )
-    )
+    return calendar_integration.sync_tasks_to_calendar(task_dicts)
 
 
 # ============================================================
@@ -1156,6 +999,7 @@ async def get_calendar_summary(
 @app.post("/recurring/process")
 async def process_recurring_tasks(
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     created_tasks = (
         recurring_task_manager
@@ -1179,18 +1023,13 @@ async def process_recurring_tasks(
 async def complete_recurring_task(
     task_id: int,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
-    task = (
-        db.query(Task)
-        .filter(Task.id == task_id)
-        .first()
+    task = get_owned_task_or_404(
+        db,
+        task_id,
+        current_user,
     )
-
-    if not task:
-        raise HTTPException(
-            status_code=404,
-            detail="Task not found",
-        )
 
     success = (
         recurring_task_manager
@@ -1217,25 +1056,13 @@ async def complete_recurring_task(
 
 def get_user_task_intervals(
     db: Session,
-    user_email: Optional[str],
+    user_id: int,
 ) -> List[tuple]:
     """Return occupied intervals for active tasks belonging to one user."""
-    if not user_email:
-        return []
-
-    user = (
-        db.query(User)
-        .filter(User.email == user_email)
-        .first()
-    )
-
-    if not user:
-        return []
-
     tasks = (
         db.query(Task)
         .filter(
-            Task.user_id == user.id,
+            Task.user_id == user_id,
             Task.deadline.isnot(None),
             Task.status != "completed",
         )
@@ -1264,12 +1091,12 @@ def get_user_task_intervals(
 @app.post("/meeting/suggest")
 async def suggest_meeting_times(
     request: MeetingRequest,
-    user_email: Optional[str] = None,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     task_intervals = get_user_task_intervals(
         db,
-        user_email,
+        current_user.id,
     )
 
     result = (
@@ -1292,12 +1119,12 @@ async def suggest_meeting_times(
 @app.post("/meeting/best")
 async def find_best_meeting_time(
     request: MeetingRequest,
-    user_email: Optional[str] = None,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     task_intervals = get_user_task_intervals(
         db,
-        user_email,
+        current_user.id,
     )
 
     result = (

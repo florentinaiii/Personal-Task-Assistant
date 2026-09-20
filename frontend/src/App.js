@@ -24,6 +24,15 @@ const API_URL =
   process.env.REACT_APP_API_URL || 'http://localhost:8001';
 
 axios.defaults.baseURL = API_URL;
+
+axios.interceptors.request.use((config) => {
+  const token = localStorage.getItem('accessToken');
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
+
 const robotAvatar = '/robot-reference.png';
 
 function App() {
@@ -43,8 +52,13 @@ function App() {
 
   useEffect(() => {
     const savedUser = localStorage.getItem('user');
-    if (savedUser) {
+    const token = localStorage.getItem('accessToken');
+
+    if (savedUser && token) {
       setUser(JSON.parse(savedUser));
+    } else {
+      localStorage.removeItem('user');
+      localStorage.removeItem('accessToken');
     }
   }, []);
 
@@ -70,6 +84,7 @@ function App() {
   const handleLogout = () => {
     localStorage.removeItem('user');
     localStorage.removeItem('userEmail');
+    localStorage.removeItem('accessToken');
     setUser(null);
     setTasks([]);
     setChatMessages([]);
@@ -83,9 +98,7 @@ function App() {
     if (!user) return;
 
     try {
-      const response = await axios.get(
-        `/tasks?user_email=${encodeURIComponent(user.email)}`
-      );
+      const response = await axios.get('/tasks');
       setTasks(response.data);
     } catch (error) {
       console.error('Error fetching tasks:', error);
@@ -96,9 +109,7 @@ function App() {
     if (!user) return;
 
     try {
-      const response = await axios.get(
-        `/schedule?user_email=${encodeURIComponent(user.email)}`
-      );
+      const response = await axios.get('/schedule');
       setSchedule(response.data);
     } catch (error) {
       console.error('Error fetching schedule:', error);
@@ -109,9 +120,7 @@ function App() {
     if (!user) return;
 
     try {
-      const response = await axios.get(
-        `/insights?user_email=${encodeURIComponent(user.email)}`
-      );
+      const response = await axios.get('/insights');
       setInsights(response.data);
     } catch (error) {
       console.error('Error fetching insights:', error);
@@ -131,7 +140,6 @@ function App() {
     try {
       const response = await axios.post('/chat', {
         message: currentMessage,
-        user_email: user.email,
       });
 
       const assistantMessage = {
@@ -218,11 +226,6 @@ function App() {
           title: meetingTitle,
           duration_hours: Number(meetingDuration),
           urgency: meetingUrgency,
-        },
-        {
-          params: {
-            user_email: user.email,
-          },
         }
       );
       console.log('Response received:', response.data);
@@ -267,9 +270,7 @@ function App() {
       console.log('Sending task data:', taskData);
       console.log('User email:', user.email);
 
-      const response = await axios.post('/tasks', taskData, {
-        params: { user_email: user.email }
-      });
+      const response = await axios.post('/tasks', taskData);
       console.log('Task created successfully:', response.data);
 
       await fetchTasks();
@@ -315,9 +316,7 @@ function App() {
       console.log('Sending alternative task data:', taskData);
       console.log('User email:', user.email);
 
-      const response = await axios.post('/tasks', taskData, {
-        params: { user_email: user.email }
-      });
+      const response = await axios.post('/tasks', taskData);
       console.log('Alternative task created successfully:', response.data);
 
       await fetchTasks();

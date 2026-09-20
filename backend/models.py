@@ -1,50 +1,49 @@
 from sqlalchemy import Column, Integer, String, DateTime, Boolean, Float, Text, ForeignKey
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import declarative_base, relationship
 from sqlalchemy.sql import func
 from datetime import datetime
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from typing import Optional, List
 
 Base = declarative_base()
 
+
 class User(Base):
     __tablename__ = "users"
-    
+
     id = Column(Integer, primary_key=True, index=True)
     email = Column(String(255), unique=True, index=True, nullable=False)
+    password_hash = Column(String(255), nullable=True)
     created_at = Column(DateTime, default=func.now())
-    
-    # Relationship to tasks
+
     tasks = relationship("Task", back_populates="user")
+
 
 class Task(Base):
     __tablename__ = "tasks"
-    
+
     id = Column(Integer, primary_key=True, index=True)
     title = Column(String(255), nullable=False)
     description = Column(Text, nullable=True)
     deadline = Column(DateTime, nullable=True)
-    priority = Column(Integer, default=1)  # 1=low, 2=medium, 3=high
-    status = Column(String(20), default="pending")  # pending, in_progress, completed
+    priority = Column(Integer, default=1)
+    status = Column(String(20), default="pending")
     created_at = Column(DateTime, default=func.now())
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
-    estimated_duration = Column(Float, nullable=True)  # in hours
+    estimated_duration = Column(Float, nullable=True)
     category = Column(String(100), nullable=True)
     is_recurring = Column(Boolean, default=False)
-    recurring_pattern = Column(String(50), nullable=True)  # daily, weekly, monthly
-    
-    # Foreign key to user
+    recurring_pattern = Column(String(50), nullable=True)
+
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    
-    # Email reminder fields
-    notification_type = Column(String(20), default="websocket")  # email, websocket
-    recipient_email = Column(String(255), nullable=True)  # Keep for backward compatibility
-    reminder_minutes_before = Column(Integer, nullable=True)  # e.g., 60 for 1 hour before
+
+    notification_type = Column(String(20), default="websocket")
+    recipient_email = Column(String(255), nullable=True)
+    reminder_minutes_before = Column(Integer, nullable=True)
     email_sent = Column(Boolean, default=False)
-    
-    # Relationship to user
+
     user = relationship("User", back_populates="tasks")
+
 
 class TaskCreate(BaseModel):
     title: str
@@ -59,6 +58,7 @@ class TaskCreate(BaseModel):
     reminder_minutes_before: Optional[int] = None
     is_recurring: Optional[bool] = False
     recurring_pattern: Optional[str] = None
+
 
 class TaskUpdate(BaseModel):
     title: Optional[str] = None
@@ -75,7 +75,10 @@ class TaskUpdate(BaseModel):
     is_recurring: Optional[bool] = None
     recurring_pattern: Optional[str] = None
 
+
 class TaskResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     title: str
     description: Optional[str]
@@ -93,13 +96,12 @@ class TaskResponse(BaseModel):
     user_id: int
     is_recurring: Optional[bool]
     recurring_pattern: Optional[str]
-    
-    class Config:
-        from_attributes = True
+
 
 class ChatMessage(BaseModel):
     message: str
     user_email: Optional[str] = None
+
 
 class MeetingRequest(BaseModel):
     title: str
@@ -111,16 +113,25 @@ class MeetingRequest(BaseModel):
     preferred_time_end: Optional[int] = None
     days_ahead: int = 14
 
-class UserLoginRequest(BaseModel):
+
+class UserAuthRequest(BaseModel):
     email: str
+    password: str
+
 
 class UserResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     email: str
     created_at: datetime
-    
-    class Config:
-        from_attributes = True
+
+
+class AuthResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    user: UserResponse
+
 
 class ChatResponse(BaseModel):
     response: str

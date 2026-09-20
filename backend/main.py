@@ -895,7 +895,9 @@ async def get_insights(
 # ============================================================
 
 @app.get("/calendar/status")
-async def get_calendar_status():
+async def get_calendar_status(
+    current_user: User = Depends(get_current_user),
+):
     return {
         "authenticated":
             calendar_integration.is_authenticated(),
@@ -915,6 +917,7 @@ async def get_calendar_status():
 @app.get("/calendar/events")
 async def get_calendar_events(
     days_ahead: int = 7,
+    current_user: User = Depends(get_current_user),
 ):
     if not calendar_integration.is_authenticated():
         return {
@@ -977,6 +980,7 @@ async def sync_tasks_to_calendar(
 @app.get("/calendar/summary")
 async def get_calendar_summary(
     days_ahead: int = 7,
+    current_user: User = Depends(get_current_user),
 ):
     if not calendar_integration.is_authenticated():
         return {

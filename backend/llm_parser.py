@@ -149,8 +149,13 @@ class LLMTaskParser:
                 print("Task interpreted with Gemini LLM.")
                 return converted_tasks
 
-            # Gemini result could not be converted safely.
-            return self.fallback_parser.parse_task_from_text(text)
+            # Gemini successfully interpreted the request, but all
+            # extracted tasks were rejected by application validation
+            # (for example, because the deadline is in the past).
+            # Do not use the fallback parser here, because it could
+            # recreate a task that was intentionally rejected.
+            print("Gemini task rejected by application validation.")
+            return []
 
         except Exception as exc:
             print(
@@ -203,6 +208,15 @@ Examples:
 "next Monday"
 "in two days"
 
+IMPORTANT DATE FORMAT RULE:
+Numeric dates written as DD.MM.YYYY, DD/MM/YYYY, or DD-MM-YYYY
+must ALWAYS be interpreted as DAY-MONTH-YEAR, never MONTH-DAY-YEAR.
+
+Examples:
+12.02.2026 = February 12, 2026
+03.04.2027 = April 3, 2027
+25.12.2026 = December 25, 2026
+
 4. Never silently move an explicitly requested past time to
 another day.
 
@@ -244,6 +258,14 @@ If the user simply says "remind me" without specifying how long
 before the deadline, set reminder_requested=true and
 reminder_minutes_before=null.
 
+Scheduled meetings are a special case:
+When the user schedules an actual meeting with a deadline/time, use
+category="Meeting". Meetings automatically receive an email reminder
+from the application even when the user does not explicitly say
+"remind me". If the user does not specify a reminder interval, leave
+reminder_minutes_before=null; the application will default the meeting
+reminder to 5 minutes before the meeting.
+
 9. A single message may contain multiple tasks.
 
 10. Preserve the user's intended meaning. Do not add actions
@@ -251,7 +273,7 @@ that were not requested.
 """
 
         interaction = self.client.interactions.create(
-            model="gemini-3.6-flash",
+            model="gemini-3.1-flash-lite",
             input=prompt,
             response_format={
                 "type": "text",
@@ -312,8 +334,14 @@ that were not requested.
                 if fallback_tasks:
                     deadline = fallback_tasks[0].deadline
 
+            is_scheduled_meeting = (
+                (item.category or "").strip().lower() == "meeting"
+                and deadline is not None
+            )
+
             reminder_requested = (
-                item.reminder_requested
+                is_scheduled_meeting
+                or item.reminder_requested
                 or item.reminder_minutes_before is not None
                 or "email" in normalized_text
                 or "remind me" in normalized_text
@@ -344,7 +372,23 @@ that were not requested.
                     deadline - now
                 ).total_seconds() / 60
 
-                if minutes_until_deadline <= 1:
+                if is_scheduled_meeting:
+                    # Meetings default to an email reminder 5 minutes
+                    # before the scheduled start time. For a meeting
+                    # created less than 5 minutes away, use a safe
+                    # near-term reminder instead.
+                    if minutes_until_deadline > DEFAULT_REMINDER_MINUTES:
+                        reminder_minutes_before = (
+                            DEFAULT_REMINDER_MINUTES
+                        )
+                    elif minutes_until_deadline <= 1:
+                        reminder_minutes_before = 0
+                    else:
+                        reminder_minutes_before = max(
+                            0,
+                            int(minutes_until_deadline) - 1,
+                        )
+                elif minutes_until_deadline <= 1:
                     reminder_minutes_before = 0
                 elif minutes_until_deadline < 10:
                     reminder_minutes_before = min(

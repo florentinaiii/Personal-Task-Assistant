@@ -605,6 +605,179 @@ def generate_ai_response(
                     )
 
         # ----------------------------------------------------
+        # SPECIAL CASE:
+        # USER PROVIDED AN EXPLICIT CALENDAR DATE IN THE PAST
+        # ----------------------------------------------------
+
+        date_match = re.search(
+            r"\b(0?[1-9]|[12]\d|3[01])[./-]"
+            r"(0?[1-9]|1[0-2])[./-]"
+            r"(\d{4})\b",
+            normalized,
+        )
+
+        if date_match:
+            day = int(date_match.group(1))
+            month = int(date_match.group(2))
+            year = int(date_match.group(3))
+
+            now = datetime.now(
+                ZoneInfo("Europe/Belgrade")
+            ).replace(tzinfo=None)
+
+            time_match = re.search(
+                r"\b(1[0-2]|0?[1-9])"
+                r"(?::([0-5]\d))?"
+                r"\s*(am|pm)\b",
+                normalized,
+                re.IGNORECASE,
+            )
+
+            hour = 23
+            minute = 59
+
+            if time_match:
+                hour = int(time_match.group(1))
+                minute = int(time_match.group(2) or 0)
+                meridiem = time_match.group(3).lower()
+
+                if meridiem == "pm" and hour != 12:
+                    hour += 12
+                elif meridiem == "am" and hour == 12:
+                    hour = 0
+
+            try:
+                requested_datetime = datetime(
+                    year,
+                    month,
+                    day,
+                    hour,
+                    minute,
+                )
+            except ValueError:
+                requested_datetime = None
+
+            if (
+                requested_datetime is not None
+                and requested_datetime <= now
+            ):
+                formatted_date = requested_datetime.strftime(
+                    "%B %d, %Y"
+                ).replace(" 0", " ")
+
+                if time_match:
+                    formatted_time = requested_datetime.strftime(
+                        "%I:%M %p"
+                    ).lstrip("0")
+
+                    return (
+                        f"{formatted_date} at {formatted_time} "
+                        "has already passed. "
+                        "Please choose a future date and time."
+                    )
+
+                return (
+                    f"{formatted_date} has already passed. "
+                    "Please choose a future date."
+                )
+
+        # ----------------------------------------------------
+        # SPECIAL CASE:
+        # USER PROVIDED A NAMED CALENDAR DATE IN THE PAST
+        # Examples: "March 02 2026", "March 2, 2026"
+        # ----------------------------------------------------
+
+        named_date_match = re.search(
+            r"\b("
+            r"january|february|march|april|may|june|"
+            r"july|august|september|october|november|december"
+            r")\s+(0?[1-9]|[12]\d|3[01])(?:st|nd|rd|th)?"
+            r",?\s+(\d{4})\b",
+            normalized,
+            re.IGNORECASE,
+        )
+
+        if named_date_match:
+            month_names = {
+                "january": 1,
+                "february": 2,
+                "march": 3,
+                "april": 4,
+                "may": 5,
+                "june": 6,
+                "july": 7,
+                "august": 8,
+                "september": 9,
+                "october": 10,
+                "november": 11,
+                "december": 12,
+            }
+
+            month = month_names[named_date_match.group(1).lower()]
+            day = int(named_date_match.group(2))
+            year = int(named_date_match.group(3))
+
+            now = datetime.now(
+                ZoneInfo("Europe/Belgrade")
+            ).replace(tzinfo=None)
+
+            time_match = re.search(
+                r"\b(1[0-2]|0?[1-9])"
+                r"(?::([0-5]\d))?"
+                r"\s*(am|pm)\b",
+                normalized,
+                re.IGNORECASE,
+            )
+
+            hour = 23
+            minute = 59
+
+            if time_match:
+                hour = int(time_match.group(1))
+                minute = int(time_match.group(2) or 0)
+                meridiem = time_match.group(3).lower()
+
+                if meridiem == "pm" and hour != 12:
+                    hour += 12
+                elif meridiem == "am" and hour == 12:
+                    hour = 0
+
+            try:
+                requested_datetime = datetime(
+                    year,
+                    month,
+                    day,
+                    hour,
+                    minute,
+                )
+            except ValueError:
+                requested_datetime = None
+
+            if (
+                requested_datetime is not None
+                and requested_datetime <= now
+            ):
+                formatted_date = requested_datetime.strftime(
+                    "%B %d, %Y"
+                ).replace(" 0", " ")
+
+                if time_match:
+                    formatted_time = requested_datetime.strftime(
+                        "%I:%M %p"
+                    ).lstrip("0")
+
+                    return (
+                        f"{formatted_date} at {formatted_time} "
+                        "has already passed. "
+                        "Please choose a future date and time."
+                    )
+
+                return (
+                    f"{formatted_date} has already passed. "
+                    "Please choose a future date."
+                )
+
+        # ----------------------------------------------------
         # NORMAL FALLBACK
         # ----------------------------------------------------
 
